@@ -31,6 +31,7 @@ import com.elvishew.xlog.XLog;
 import com.zcshou.gogogo.MainActivity;
 import com.zcshou.gogogo.R;
 import com.zcshou.joystick.JoyStick;
+import java.util.ArrayList;
 
 public class ServiceGo extends Service {
     // 定位相关变量
@@ -43,6 +44,10 @@ public class ServiceGo extends Service {
     private double mCurAlt = DEFAULT_ALT;
     private float mCurBea = DEFAULT_BEA;
     private double mSpeed = 1.2;        /* 默认的速度，单位 m/s */
+    // 导航相关
+    private volatile boolean isFollowingRoute = false;
+    private ArrayList<double[]> mRoutePoints = new ArrayList<>(); // 每项为 {lng_wgs, lat_wgs}
+    private int mRouteIndex = 0;
     private static final int HANDLER_MSG_ID = 0;
     private static final String SERVICE_GO_HANDLER_NAME = "ServiceGoLocation";
     private LocationManager mLocManager;
@@ -187,10 +192,37 @@ public class ServiceGo extends Service {
                     Thread.sleep(100);
 
                     if (!isStop) {
-                        setLocationNetwork();
-                        setLocationGPS();
+                            // 如果正在跟随路线，则按序推进到下一个点（简单策略：每 tick 移向下一个路点，或直接跳到下一个点）
+                            if (isFollowingRoute && mRouteIndex < mRoutePoints.size()) {
+                                double[] target = mRoutePoints.get(mRouteIndex);
+                                // routeWgs: {lng_wgs, lat_wgs}
+                                mCurLng = target[0];
+                                mCurLat = target[1];
 
-                        sendEmptyMessage(HANDLER_MSG_ID);
+                                // 计算朝向(简化)：如果有下一个点，计算朝向；否则保持不变
+                                if (mRouteIndex + 1 < mRoutePoints.size()) {
+                                    double[] next = mRoutePoints.get(Math.min(mRouteIndex + 1, mRoutePoints.size() - 1));
+                                    double dx = next[0] - mCurLng;
+                                    double dy = next[1] - mCurLat;
+                                    mCurBea = (float) (Math.toDegrees(Math.atan2(dy, dx)));
+                                }
+
+                                // advance index
+                                mRouteIndex++;
+                            }
+
+                            setLocationNetwork();
+                            setLocationGPS();
+
+                            // 如果到达路线末尾则停止跟随
+                            if (isFollowingRoute && mRouteIndex >= mRoutePoints.size()) {
+                                isFollowingRoute = false;
+                                mRoutePoints.clear();
+                                mRouteIndex = 0;
+                                XLog.i("SERVICEGO: finish follow route");
+                            }
+
+                            sendEmptyMessage(HANDLER_MSG_ID);
                     }
                 } catch (InterruptedException e) {
                     XLog.e("SERVICEGO: ERROR - handleMessage");
@@ -332,7 +364,21 @@ public class ServiceGo extends Service {
             mLocHandler.sendEmptyMessage(HANDLER_MSG_ID);
             mJoyStick.setCurrentPosition(mCurLng, mCurLat, mCurAlt);
         }
+
+        // 接收路线点并开始沿路线行走（传入 WGS84 坐标数组列表）
+        public void startFollowRoute(ArrayList<double[]> routeWgs) {
+            if (routeWgs == null || routeWgs.isEmpty()) return;
+            mRoutePoints.clear();
+            mRoutePoints.addAll(routeWgs);
+            mRouteIndex = 0;
+            isFollowingRoute = true;
+            XLog.i("SERVICEGO: start follow route, points=" + mRoutePoints.size());
+        }
+
+        public void stopFollowRoute() {
+            isFollowingRoute = false;
+            mRoutePoints.clear();
+            mRouteIndex = 0;
+        }
     }
 }
-
-
