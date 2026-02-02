@@ -160,21 +160,26 @@ public class ServiceGo extends Service {
         mJoyStick.setListener(new JoyStick.JoyStickClickListener() {
             @Override
             public void onMoveInfo(double speed, double disLng, double disLat, double angle) {
-                mSpeed = speed;
+                // 限制速度范围，确保不会过快或过慢
+                mSpeed = Math.max(0.1, Math.min(speed, 50.0));
                 // 根据当前的经纬度和距离，计算下一个经纬度
                 // Latitude: 1 deg = 110.574 km // 纬度的每度的距离大约为 110.574km
                 // Longitude: 1 deg = 111.320*cos(latitude) km  // 经度的每度的距离从0km到111km不等
                 // 具体见：http://wp.mlab.tw/?p=2200
                 mCurLng += disLng / (111.320 * Math.cos(Math.abs(mCurLat) * Math.PI / 180));
                 mCurLat += disLat / 110.574;
+                // 确保经纬度在有效范围内
+                mCurLng = Math.max(-180.0, Math.min(180.0, mCurLng));
+                mCurLat = Math.max(-90.0, Math.min(90.0, mCurLat));
                 mCurBea = (float) angle;
             }
 
             @Override
             public void onPositionInfo(double lng, double lat, double alt) {
-                mCurLng = lng;
-                mCurLat = lat;
-                mCurAlt = alt;
+                // 确保经纬度在有效范围内
+                mCurLng = Math.max(-180.0, Math.min(180.0, lng));
+                mCurLat = Math.max(-90.0, Math.min(90.0, lat));
+                mCurAlt = Math.max(0.0, alt);
             }
         });
         mJoyStick.show();
@@ -204,10 +209,19 @@ public class ServiceGo extends Service {
                             }
                             
                             if (next != null) {
-                                // 计算当前点到下一点的距离（米）
+                                // 计算当前点到下一点的距离（米）- 使用更精确的计算方法
                                 double dx = next[0] - current[0];
                                 double dy = next[1] - current[1];
-                                double distance = Math.sqrt(dx * dx + dy * dy) * 111000; // 转换为米（近似值）
+                                // 使用 Haversine 公式计算两点之间的距离
+                                double lat1 = Math.toRadians(current[1]);
+                                double lat2 = Math.toRadians(next[1]);
+                                double dLat = Math.toRadians(dy);
+                                double dLon = Math.toRadians(dx);
+                                double a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                                        Math.cos(lat1) * Math.cos(lat2) *
+                                        Math.sin(dLon/2) * Math.sin(dLon/2);
+                                double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                                double distance = 6371000 * c; // 地球半径约6371公里
                                 
                                 // 计算这一帧应该移动的距离
                                 double moveDistance = mRouteSpeed * 0.1; // 0.1秒 = 100ms
@@ -227,11 +241,13 @@ public class ServiceGo extends Service {
                                     mCurLat = current[1] + dy * mRouteProgress;
                                 }
                                 
-                                // 计算朝向
+                                // 计算朝向 - 确保方向正确
                                 mCurBea = (float) Math.toDegrees(Math.atan2(dy, dx));
                                 if (mCurBea < 0) {
                                     mCurBea += 360;
                                 }
+                                // 确保朝向在0-360范围内
+                                mCurBea = (mCurBea + 360) % 360;
                             } else {
                                 // 已经是最后一个点，直接定位到该点
                                 mCurLng = current[0];
@@ -383,9 +399,10 @@ public class ServiceGo extends Service {
     public class ServiceGoBinder extends Binder {
         public void setPosition(double lng, double lat, double alt) {
             mLocHandler.removeMessages(HANDLER_MSG_ID);
-            mCurLng = lng;
-            mCurLat = lat;
-            mCurAlt = alt;
+            // 确保经纬度在有效范围内
+            mCurLng = Math.max(-180.0, Math.min(180.0, lng));
+            mCurLat = Math.max(-90.0, Math.min(90.0, lat));
+            mCurAlt = Math.max(0.0, alt);
             mLocHandler.sendEmptyMessage(HANDLER_MSG_ID);
             mJoyStick.setCurrentPosition(mCurLng, mCurLat, mCurAlt);
         }
@@ -393,8 +410,16 @@ public class ServiceGo extends Service {
         // 接收路线点并开始沿路线行走（传入 WGS84 坐标数组列表）
         public void startFollowRoute(ArrayList<double[]> routeWgs) {
             if (routeWgs == null || routeWgs.isEmpty()) return;
+            // 清理并验证路线点
             mRoutePoints.clear();
-            mRoutePoints.addAll(routeWgs);
+            for (double[] point : routeWgs) {
+                if (point.length >= 2) {
+                    // 确保经纬度在有效范围内
+                    double lng = Math.max(-180.0, Math.min(180.0, point[0]));
+                    double lat = Math.max(-90.0, Math.min(90.0, point[1]));
+                    mRoutePoints.add(new double[]{lng, lat});
+                }
+            }
             mRouteIndex = 0;
             mRouteProgress = 0.0;
             isFollowingRoute = true;
@@ -409,7 +434,8 @@ public class ServiceGo extends Service {
         }
 
         public void setRouteSpeed(double speed) {
-            mRouteSpeed = speed;
+            // 限制速度范围，确保不会过快或过慢
+            mRouteSpeed = Math.max(0.1, Math.min(speed, 50.0));
             XLog.i("SERVICEGO: set route speed=" + mRouteSpeed);
         }
     }
