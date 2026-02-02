@@ -48,6 +48,8 @@ public class ServiceGo extends Service {
     private volatile boolean isFollowingRoute = false;
     private ArrayList<double[]> mRoutePoints = new ArrayList<>(); // 每项为 {lng_wgs, lat_wgs}
     private int mRouteIndex = 0;
+    private double mRouteSpeed = 1.2; // 路径移动速度 m/s
+    private double mRouteProgress = 0.0; // 当前点到下一点的进度 (0-1)
     private static final int HANDLER_MSG_ID = 0;
     private static final String SERVICE_GO_HANDLER_NAME = "ServiceGoLocation";
     private LocationManager mLocManager;
@@ -192,37 +194,60 @@ public class ServiceGo extends Service {
                     Thread.sleep(100);
 
                     if (!isStop) {
-                            // 如果正在跟随路线，则按序推进到下一个点（简单策略：每 tick 移向下一个路点，或直接跳到下一个点）
-                            if (isFollowingRoute && mRouteIndex < mRoutePoints.size()) {
-                                double[] target = mRoutePoints.get(mRouteIndex);
-                                // routeWgs: {lng_wgs, lat_wgs}
-                                mCurLng = target[0];
-                                mCurLat = target[1];
-
-                                // 计算朝向(简化)：如果有下一个点，计算朝向；否则保持不变
-                                if (mRouteIndex + 1 < mRoutePoints.size()) {
-                                    double[] next = mRoutePoints.get(Math.min(mRouteIndex + 1, mRoutePoints.size() - 1));
-                                    double dx = next[0] - mCurLng;
-                                    double dy = next[1] - mCurLat;
-                                    mCurBea = (float) (Math.toDegrees(Math.atan2(dy, dx)));
-                                }
-
-                                // advance index
-                                mRouteIndex++;
+                        // 如果正在跟随路线，则按序推进到下一个点
+                        if (isFollowingRoute && mRouteIndex < mRoutePoints.size()) {
+                            double[] current = mRoutePoints.get(mRouteIndex);
+                            double[] next = null;
+                            
+                            if (mRouteIndex + 1 < mRoutePoints.size()) {
+                                next = mRoutePoints.get(mRouteIndex + 1);
                             }
-
-                            setLocationNetwork();
-                            setLocationGPS();
-
-                            // 如果到达路线末尾则停止跟随
-                            if (isFollowingRoute && mRouteIndex >= mRoutePoints.size()) {
+                            
+                            if (next != null) {
+                                // 计算当前点到下一点的距离（米）
+                                double dx = next[0] - current[0];
+                                double dy = next[1] - current[1];
+                                double distance = Math.sqrt(dx * dx + dy * dy) * 111000; // 转换为米（近似值）
+                                
+                                // 计算这一帧应该移动的距离
+                                double moveDistance = mRouteSpeed * 0.1; // 0.1秒 = 100ms
+                                
+                                // 更新进度
+                                mRouteProgress += moveDistance / distance;
+                                
+                                if (mRouteProgress >= 1.0) {
+                                    // 到达下一个点
+                                    mRouteIndex++;
+                                    mRouteProgress = 0.0;
+                                    mCurLng = next[0];
+                                    mCurLat = next[1];
+                                } else {
+                                    // 在两点之间插值
+                                    mCurLng = current[0] + dx * mRouteProgress;
+                                    mCurLat = current[1] + dy * mRouteProgress;
+                                }
+                                
+                                // 计算朝向
+                                mCurBea = (float) Math.toDegrees(Math.atan2(dy, dx));
+                                if (mCurBea < 0) {
+                                    mCurBea += 360;
+                                }
+                            } else {
+                                // 已经是最后一个点，直接定位到该点
+                                mCurLng = current[0];
+                                mCurLat = current[1];
                                 isFollowingRoute = false;
                                 mRoutePoints.clear();
                                 mRouteIndex = 0;
+                                mRouteProgress = 0.0;
                                 XLog.i("SERVICEGO: finish follow route");
                             }
+                        }
 
-                            sendEmptyMessage(HANDLER_MSG_ID);
+                        setLocationNetwork();
+                        setLocationGPS();
+
+                        sendEmptyMessage(HANDLER_MSG_ID);
                     }
                 } catch (InterruptedException e) {
                     XLog.e("SERVICEGO: ERROR - handleMessage");
@@ -371,6 +396,7 @@ public class ServiceGo extends Service {
             mRoutePoints.clear();
             mRoutePoints.addAll(routeWgs);
             mRouteIndex = 0;
+            mRouteProgress = 0.0;
             isFollowingRoute = true;
             XLog.i("SERVICEGO: start follow route, points=" + mRoutePoints.size());
         }
@@ -379,6 +405,12 @@ public class ServiceGo extends Service {
             isFollowingRoute = false;
             mRoutePoints.clear();
             mRouteIndex = 0;
+            mRouteProgress = 0.0;
+        }
+
+        public void setRouteSpeed(double speed) {
+            mRouteSpeed = speed;
+            XLog.i("SERVICEGO: set route speed=" + mRouteSpeed);
         }
     }
 }
