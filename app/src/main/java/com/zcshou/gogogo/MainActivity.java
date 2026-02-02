@@ -43,6 +43,7 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.widget.SeekBar;
 import android.widget.SimpleAdapter;
 import android.widget.TextView;
 
@@ -172,6 +173,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private long mDownloadId;
     private BroadcastReceiver mDownloadBdRcv;
     private String mUpdateFilename;
+    /*============================== 路径导航 相关 ==============================*/
+    private View mRoutePanel;
+    private boolean isRouteMode = false;
+    private ArrayList<LatLng> mRoutePoints = new ArrayList<>();
+    private ArrayList<MarkerOptions> mRouteMarkers = new ArrayList<>();
+    private com.baidu.mapapi.map.Polyline mRoutePolyline;
+    private double mRouteSpeed = 1.2;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -219,6 +227,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         initSearchView();
 
         initUpdateVersion();
+
+        initRoutePanel();
 
         checkUpdateVersion(false);
     }
@@ -390,6 +400,16 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         });
 
         return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_route_mode) {
+            toggleRouteMode();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     @Override
@@ -621,6 +641,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
              */
             @Override
             public void onMapClick(LatLng point) {
+                if (isRouteMode) {
+                    addRoutePoint(point);
+                    return;
+                }
                 mMarkLatLngMap = point;
                 markMap();
 
@@ -632,6 +656,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
              */
             @Override
             public void onMapPoiClick(MapPoi poi) {
+                if (isRouteMode) {
+                    addRoutePoint(poi.getPosition());
+                    return;
+                }
                 mMarkLatLngMap = poi.getPosition();
                 markMap();
                 //百度坐标系转wgs坐标系
@@ -1621,6 +1649,187 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
             intent.addCategory("android.intent.category.DEFAULT");
             startActivity(intent);
+        }
+    }
+
+    /*============================== 路径导航 相关 ==============================*/
+    private void initRoutePanel() {
+        LayoutInflater inflater = LayoutInflater.from(this);
+        mRoutePanel = inflater.inflate(R.layout.route_panel, null);
+
+        Button btnClear = mRoutePanel.findViewById(R.id.btn_route_clear);
+        Button btnDeleteLast = mRoutePanel.findViewById(R.id.btn_route_delete_last);
+        Button btnClose = mRoutePanel.findViewById(R.id.btn_route_close);
+        Button btnStart = mRoutePanel.findViewById(R.id.btn_route_start);
+        Button btnStop = mRoutePanel.findViewById(R.id.btn_route_stop);
+        SeekBar speedSeekBar = mRoutePanel.findViewById(R.id.route_speed_seekbar);
+        TextView speedValue = mRoutePanel.findViewById(R.id.route_speed_value);
+
+        btnClear.setOnClickListener(v -> clearRoute());
+        btnDeleteLast.setOnClickListener(v -> deleteLastRoutePoint());
+        btnClose.setOnClickListener(v -> closeRoutePanel());
+        btnStart.setOnClickListener(v -> startRouteNavigation());
+        btnStop.setOnClickListener(v -> stopRouteNavigation());
+
+        speedSeekBar.setProgress(12);
+        speedSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                mRouteSpeed = progress / 10.0;
+                speedValue.setText(String.format("%.1f m/s", mRouteSpeed));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+    }
+
+    private void showRoutePanel() {
+        if (mRoutePanel.getParent() == null) {
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            );
+            params.gravity = Gravity.BOTTOM;
+            addContentView(mRoutePanel, params);
+        }
+        mRoutePanel.setVisibility(View.VISIBLE);
+        updateRoutePointsList();
+    }
+
+    private void closeRoutePanel() {
+        mRoutePanel.setVisibility(View.GONE);
+        isRouteMode = false;
+        clearRoute();
+    }
+
+    private void addRoutePoint(LatLng point) {
+        if (!isRouteMode) {
+            return;
+        }
+        mRoutePoints.add(point);
+
+        MarkerOptions marker = new MarkerOptions()
+            .position(point)
+            .icon(BitmapDescriptorFactory.fromResource(R.drawable.icon_gcoding))
+            .zIndex(10);
+        mRouteMarkers.add(marker);
+        mBaiduMap.addOverlay(marker);
+
+        if (mRoutePoints.size() > 1) {
+            updateRoutePolyline();
+        }
+
+        updateRoutePointsList();
+    }
+
+    private void deleteLastRoutePoint() {
+        if (mRoutePoints.isEmpty()) {
+            return;
+        }
+        int lastIndex = mRoutePoints.size() - 1;
+        mRoutePoints.remove(lastIndex);
+        mBaiduMap.clear();
+        mRouteMarkers.clear();
+        for (LatLng point : mRoutePoints) {
+            MarkerOptions marker = new MarkerOptions()
+                .position(point)
+                .icon(BitmapDescriptorFactory.fromResource(R.drawable.icon_gcoding))
+                .zIndex(10);
+            mRouteMarkers.add(marker);
+            mBaiduMap.addOverlay(marker);
+        }
+        if (mRoutePolyline != null) {
+            mRoutePolyline = null;
+        }
+        if (mRoutePoints.size() > 1) {
+            updateRoutePolyline();
+        }
+        updateRoutePointsList();
+    }
+
+    private void clearRoute() {
+        mRoutePoints.clear();
+        mRouteMarkers.clear();
+        mBaiduMap.clear();
+        if (mRoutePolyline != null) {
+            mRoutePolyline = null;
+        }
+        updateRoutePointsList();
+    }
+
+    private void updateRoutePolyline() {
+        if (mRoutePoints.size() < 2) {
+            return;
+        }
+        com.baidu.mapapi.map.PolylineOptions polylineOptions = new com.baidu.mapapi.map.PolylineOptions()
+            .width(8)
+            .color(0xAAFF4081)
+            .points(mRoutePoints);
+        mRoutePolyline = (com.baidu.mapapi.map.Polyline) mBaiduMap.addOverlay(polylineOptions);
+    }
+
+    private void updateRoutePointsList() {
+        LinearLayout container = mRoutePanel.findViewById(R.id.route_points_container);
+        container.removeAllViews();
+        for (int i = 0; i < mRoutePoints.size(); i++) {
+            TextView textView = new TextView(this);
+            textView.setText(String.format(getString(R.string.route_point), i + 1));
+            textView.setTextSize(12);
+            textView.setPadding(8, 4, 8, 4);
+            container.addView(textView);
+        }
+        Button btnStart = mRoutePanel.findViewById(R.id.btn_route_start);
+        btnStart.setEnabled(mRoutePoints.size() >= 2);
+    }
+
+    private void startRouteNavigation() {
+        if (mRoutePoints.size() < 2) {
+            GoUtils.DisplayToast(this, getString(R.string.route_empty));
+            return;
+        }
+
+        if (!isMockServStart) {
+            startGoLocation();
+            mButtonStart.setImageResource(R.drawable.ic_fly);
+        }
+
+        ArrayList<double[]> routeWgs = new ArrayList<>();
+        for (LatLng point : mRoutePoints) {
+            double[] wgs = MapUtils.bd2wgs(point.longitude, point.latitude);
+            routeWgs.add(new double[] {wgs[0], wgs[1]});
+        }
+
+        if (mServiceBinder != null) {
+            mServiceBinder.setRouteSpeed(mRouteSpeed);
+            mServiceBinder.startFollowRoute(routeWgs);
+            GoUtils.DisplayToast(this, getString(R.string.route_navigating));
+            mRoutePanel.findViewById(R.id.btn_route_start).setEnabled(false);
+            mRoutePanel.findViewById(R.id.btn_route_stop).setEnabled(true);
+        } else {
+            GoUtils.DisplayToast(this, "服务尚未启动，请先启动模拟位置");
+        }
+    }
+
+    private void stopRouteNavigation() {
+        if (mServiceBinder != null) {
+            mServiceBinder.stopFollowRoute();
+            GoUtils.DisplayToast(this, getString(R.string.route_finished));
+            mRoutePanel.findViewById(R.id.btn_route_start).setEnabled(mRoutePoints.size() >= 2);
+            mRoutePanel.findViewById(R.id.btn_route_stop).setEnabled(false);
+        }
+    }
+
+    private void toggleRouteMode() {
+        isRouteMode = !isRouteMode;
+        if (isRouteMode) {
+            showRoutePanel();
+            GoUtils.DisplayToast(this, "进入路径模式，点击地图添加路径点");
+        } else {
+            closeRoutePanel();
         }
     }
 }
