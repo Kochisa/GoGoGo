@@ -137,4 +137,19 @@
     <string name="update_ignore">忽略一次</string>
     <string name="update_time">更新时间：</string>
     <string name="update_commit">提交信息：</string>
+
+    <!-- 路径导航 -->
+    <string name="route_mode_title">路径导航模式</string>
+    <string name="route_mode_tips">在地图上点击添加路径点，然后开始导航</string>
+    <string name="route_clear">清空路径</string>
+    <string name="route_delete_last">撤销上一点</string>
+    <string name="route_close">关闭</string>
+    <string name="route_speed_label">移动速度</string>
+    <string name="route_start">开始导航</string>
+    <string name="route_stop">停止导航</string>
+    <string name="route_point">路径点 %d</string>
+    <string name="route_navigating">正在导航中...</string>
+    <string name="route_finished">导航完成</string>
+    <string name="route_empty">请先添加路径点</string>
+    <string name="route_mode">路径模式</string>
 </resources>
