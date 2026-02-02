@@ -3,6 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_route_mode"
+        android:icon="@drawable/ic_move"
+        android:title="@string/route_mode"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/action_search"
         android:icon="@drawable/ic_search"
         android:title=""
