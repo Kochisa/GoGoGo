@@ -39,6 +39,9 @@ android {
             abiFilters "arm64-v8a"
         }
         signingConfig = signingConfigs.release
+        
+        buildConfigField "String", "MAPS_API_KEY", "\"${project.findProperty('MAPS_API_KEY') ?: ''}\""
+        buildConfigField "String", "MAPS_SAFE_CODE", "\"${project.findProperty('MAPS_SAFE_CODE') ?: ''}\""
     }
 
     buildTypes {

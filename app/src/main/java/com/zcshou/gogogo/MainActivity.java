@@ -46,7 +46,7 @@ import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.SimpleAdapter;
 import android.widget.TextView;
-
+import android.widget.FrameLayout;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AlertDialog;
@@ -476,9 +476,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private void initUserInfo() {
         View navHeaderView = mNavigationView.getHeaderView(0);
 
-        TextView mUserName = navHeaderView.findViewById(R.id.user_name);
-//        TextView mUserLimitInfo = navHeaderView.findViewById(R.id.user_limit);
-        ImageView mUserIcon = navHeaderView.findViewById(R.id.user_icon);
+        TextView mUserName = navHeaderView.findViewById(R.id.app_name);
+        ImageView mUserIcon = navHeaderView.findViewById(R.id.app_icon);
 
         if (sharedPreferences.getString("setting_reg_code", null) != null) {
             mUserName.setText(getResources().getString(R.string.app_author));
@@ -723,7 +722,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
             // 起点使用当前定位点的百度坐标（mCurrentLat/mCurrentLon），终点使用 mMarkLatLngMap
             try {
-                final String ak = getResources().getString(R.string.ak);
+                final String ak = BuildConfig.MAPS_API_KEY;
                 String origin = mCurrentLat + "," + mCurrentLon; // 百度坐标
                 String destination = mMarkLatLngMap.latitude + "," + mMarkLatLngMap.longitude;
                 String url = "https://api.map.baidu.com/directionlite/v1/walking?origin=" + origin + "&destination=" + destination + "&ak=" + ak + "&coord_type=bd09ll";
@@ -1286,8 +1285,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     // 记录请求的位置信息
     private void recordCurrentLocation(double lng, double lat) {
         //参数坐标系：bd09
-        final String safeCode = getResources().getString(R.string.safecode);
-        final String ak = getResources().getString(R.string.ak);
+        final String safeCode = BuildConfig.MAPS_SAFE_CODE;
+        final String ak = BuildConfig.MAPS_API_KEY;
         double[] latLng = MapUtils.bd2wgs(lng, lat);
         //bd09坐标的位置信息
         String mapApiUrl = "https://api.map.baidu.com/reverse_geocoding/v3/?ak=" + ak + "&output=json&coordtype=bd09ll" + "&location=" + lat + "," + lng + "&mcode=" + safeCode;
