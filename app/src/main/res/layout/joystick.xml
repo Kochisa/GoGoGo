@@ -7,14 +7,13 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="@dimen/joystick_ctrl_btn_height"
         android:orientation="horizontal">
 
         <LinearLayout
             android:layout_width="@dimen/joystick_ctrl_btn_width"
-            android:layout_height="@dimen/joystick_ctrl_btn_height"
-            android:layout_gravity="center_vertical"
-            android:gravity="center_vertical"
+            android:layout_height="match_parent"
+            android:gravity="center"
             android:background="@drawable/circle_shape_bg"
             android:orientation="horizontal">
 
@@ -28,36 +27,14 @@
         </LinearLayout>
 
         <Space
-            android:layout_width="2dp"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1" />
 
         <LinearLayout
             android:layout_width="@dimen/joystick_ctrl_btn_width"
-            android:layout_height="@dimen/joystick_ctrl_btn_height"
-            android:layout_gravity="center_vertical"
-            android:gravity="center_vertical"
-            android:background="@drawable/circle_shape_bg"
-            android:orientation="horizontal">
-            <ImageButton
-                android:id="@+id/joystick_history"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:contentDescription="@string/joystick_history"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_history"/>
-        </LinearLayout>
-
-        <Space
-            android:layout_width="2dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
-
-        <LinearLayout
-            android:layout_width="@dimen/joystick_ctrl_btn_width"
-            android:layout_height="@dimen/joystick_ctrl_btn_height"
-            android:layout_gravity="center_vertical"
-            android:gravity="center_vertical"
+            android:layout_height="match_parent"
+            android:gravity="center"
             android:background="@drawable/circle_shape_bg"
             android:orientation="horizontal">
             <ImageButton
@@ -67,6 +44,26 @@
                 android:contentDescription="@string/joystick_map"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_map"/>
+        </LinearLayout>
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <LinearLayout
+            android:layout_width="@dimen/joystick_ctrl_btn_width"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:background="@drawable/circle_shape_bg"
+            android:orientation="horizontal">
+            <ImageButton
+                android:id="@+id/joystick_collapse"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="收起"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_down"/>
         </LinearLayout>
 
     </LinearLayout>

@@ -19,6 +19,8 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.IBinder;
 import android.provider.Settings;
 import android.text.Editable;
@@ -46,6 +48,7 @@ import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.SimpleAdapter;
 import android.widget.TextView;
+import android.widget.ScrollView;
 import android.widget.FrameLayout;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBarDrawerToggle;
@@ -73,6 +76,7 @@ import com.baidu.mapapi.map.MarkerOptions;
 import com.baidu.mapapi.map.MyLocationConfiguration;
 import com.baidu.mapapi.map.MyLocationData;
 import com.baidu.mapapi.model.LatLng;
+import com.baidu.mapapi.model.LatLngBounds;
 import com.baidu.mapapi.search.core.SearchResult;
 import com.baidu.mapapi.search.geocode.GeoCodeResult;
 import com.baidu.mapapi.search.geocode.GeoCoder;
@@ -92,10 +96,14 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import com.zcshou.service.ServiceGo;
 import com.zcshou.database.DataBaseHistoryLocation;
@@ -180,6 +188,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private ArrayList<MarkerOptions> mRouteMarkers = new ArrayList<>();
     private com.baidu.mapapi.map.Polyline mRoutePolyline;
     private double mRouteSpeed = 1.2;
+    private int mRouteSpeedVariation = 0; // 速度浮动范围，0-20%
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -404,11 +413,6 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        int id = item.getItemId();
-        if (id == R.id.action_route_mode) {
-            toggleRouteMode();
-            return true;
-        }
         return super.onOptionsItemSelected(item);
     }
 
@@ -440,7 +444,34 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mNavigationView.setNavigationItemSelectedListener(item -> {
             int id = item.getItemId();
 
-            if (id == R.id.nav_history) {
+            if (id == R.id.nav_normal) {
+                // 切换到原版功能模式
+                isRouteMode = false;
+                closeRoutePanel();
+                GoUtils.DisplayToast(this, "已返回原版功能模式");
+            } else if (id == R.id.nav_route) {
+                // 切换到路径导航模式
+                isRouteMode = true;
+                showRoutePanel();
+                
+                // 确保模拟位置服务已启动
+                if (!isMockServStart) {
+                    // 如果服务未启动，先启动服务
+                    if (mMarkLatLngMap == null) {
+                        // 如果没有标记点，使用当前定位
+                        if (mCurrentLat != 0.0 && mCurrentLon != 0.0) {
+                            mMarkLatLngMap = new LatLng(mCurrentLat, mCurrentLon);
+                        } else {
+                            // 如果也没有定位，使用默认位置
+                            mMarkLatLngMap = new LatLng(36.667662, 117.027707);
+                        }
+                    }
+                    startGoLocation();
+                    mButtonStart.setImageResource(R.drawable.ic_fly);
+                }
+                
+                GoUtils.DisplayToast(this, "已进入路径导航模式");
+            } else if (id == R.id.nav_history) {
                 Intent intent = new Intent(MainActivity.this, HistoryActivity.class);
 
                 startActivity(intent);
@@ -454,15 +485,6 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 } catch (Exception e) {
                     GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_dev));
                 }
-            } else if (id == R.id.nav_update) {
-                checkUpdateVersion(true);
-            } else if (id == R.id.nav_feedback) {
-                File file = new File(getExternalFilesDir("Logs"), GoApplication.LOG_FILE_NAME);
-                ShareUtils.shareFile(this, file, item.getTitle().toString());
-            } else if (id == R.id.nav_contact) {
-                Uri uri = Uri.parse("https://gitee.com/itexp/gogogo/issues");
-                Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-                startActivity(intent);
             }
 
             DrawerLayout drawer = findViewById(R.id.drawer_layout);
@@ -723,11 +745,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             // 起点使用当前定位点的百度坐标（mCurrentLat/mCurrentLon），终点使用 mMarkLatLngMap
             try {
                 final String ak = BuildConfig.MAPS_API_KEY;
-                String origin = mCurrentLat + "," + mCurrentLon; // 百度坐标
-                String destination = mMarkLatLngMap.latitude + "," + mMarkLatLngMap.longitude;
-                String url = "https://api.map.baidu.com/directionlite/v1/walking?origin=" + origin + "&destination=" + destination + "&ak=" + ak + "&coord_type=bd09ll";
+            String origin = mCurrentLat + "," + mCurrentLon; // 百度坐标
+            String destination = mMarkLatLngMap.latitude + "," + mMarkLatLngMap.longitude;
+            String url = "https://api.map.baidu.com/direction/v2/walking?origin=" + origin + "&destination=" + destination + "&ak=" + ak + "&coord_type=bd09ll";
 
-                okhttp3.Request request = new okhttp3.Request.Builder().url(url).get().build();
+            XLog.d("NAV: url=" + url);
+
+            okhttp3.Request request = new okhttp3.Request.Builder().url(url).get().build();
                 final Call call = mOkHttpClient.newCall(request);
                 call.enqueue(new Callback() {
                     @Override
@@ -887,9 +911,19 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
                     /* 如果出现错误，则需要重新请求位置 */
                     int err = bdLocation.getLocType();
-                    if (err == BDLocation.TypeCriteriaException || err == BDLocation.TypeNetWorkException) {
-                        mLocClient.requestLocation();   /* 请求位置 */
-                    } else {
+                    XLog.i("Location Type: " + err + ", Latitude: " + bdLocation.getLatitude() + ", Longitude: " + bdLocation.getLongitude());
+                    
+                    // 检查定位是否成功
+                    boolean isLocationSuccess = (err == BDLocation.TypeGpsLocation || 
+                                                err == BDLocation.TypeNetWorkLocation || 
+                                                err == BDLocation.TypeOffLineLocation ||
+                                                err == BDLocation.TypeOffLineLocationNetworkFail);
+                    
+                    if (isLocationSuccess) {
+                        // 定位成功，更新位置信息
+                        mCurrentLat = bdLocation.getLatitude();
+                        mCurrentLon = bdLocation.getLongitude();
+                        
                         if (isFirstLoc) {
                             isFirstLoc = false;
                             // 这里记录百度地图返回的位置
@@ -900,6 +934,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
                             XLog.i("First Baidu LatLng: " + mMarkLatLngMap);
                         }
+                    } else {
+                        // 定位失败，重新请求位置
+                        XLog.e("Location failed with error code: " + err);
+                        mLocClient.requestLocation();
                     }
                 }
                 /**
@@ -1651,7 +1689,12 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         }
     }
 
-    /*============================== 路径导航 相关 ==============================*/
+    // ============================== 路径导航 相关 ==============================
+    private EditText mRouteStartPoint;
+    private EditText mRouteEndPoint;
+    private Button mBtnPlanRoute;
+    private boolean mIsUpdatingFromSuggestion = false;
+
     private void initRoutePanel() {
         LayoutInflater inflater = LayoutInflater.from(this);
         mRoutePanel = inflater.inflate(R.layout.route_panel, null);
@@ -1663,12 +1706,74 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         Button btnStop = mRoutePanel.findViewById(R.id.btn_route_stop);
         SeekBar speedSeekBar = mRoutePanel.findViewById(R.id.route_speed_seekbar);
         TextView speedValue = mRoutePanel.findViewById(R.id.route_speed_value);
+        SeekBar speedVariationSeekBar = mRoutePanel.findViewById(R.id.route_speed_variation_seekbar);
+        TextView speedVariationValue = mRoutePanel.findViewById(R.id.route_speed_variation_value);
+        mRouteStartPoint = mRoutePanel.findViewById(R.id.route_start_point);
+        mRouteEndPoint = mRoutePanel.findViewById(R.id.route_end_point);
+        mBtnPlanRoute = mRoutePanel.findViewById(R.id.btn_plan_route);
+        ImageButton btnStartSearch = mRoutePanel.findViewById(R.id.btn_start_search);
+        ImageButton btnEndSearch = mRoutePanel.findViewById(R.id.btn_end_search);
+        Button btnToggleRoutePoints = mRoutePanel.findViewById(R.id.btn_toggle_route_points);
+        ScrollView routePointsScrollView = mRoutePanel.findViewById(R.id.route_points_scrollview);
+        
+        // 面板折叠/展开按钮
+        ImageButton btnTogglePanel = mRoutePanel.findViewById(R.id.btn_toggle_panel);
+        LinearLayout routePanelContent = mRoutePanel.findViewById(R.id.route_panel_content);
+        LinearLayout routePanelHeader = mRoutePanel.findViewById(R.id.route_panel_header);
+        
+        // 输入提示列表
+        ListView startSuggestionList = mRoutePanel.findViewById(R.id.start_suggestion_list);
+        ListView endSuggestionList = mRoutePanel.findViewById(R.id.end_suggestion_list);
+
+        // 添加输入提示功能
+        addInputSuggestion(mRouteStartPoint, startSuggestionList, true);
+        addInputSuggestion(mRouteEndPoint, endSuggestionList, false);
 
         btnClear.setOnClickListener(v -> clearRoute());
         btnDeleteLast.setOnClickListener(v -> deleteLastRoutePoint());
         btnClose.setOnClickListener(v -> closeRoutePanel());
+        
         btnStart.setOnClickListener(v -> startRouteNavigation());
         btnStop.setOnClickListener(v -> stopRouteNavigation());
+        
+        // 路径点列表折叠/展开按钮
+        btnToggleRoutePoints.setOnClickListener(v -> {
+            if (routePointsScrollView.getVisibility() == View.GONE) {
+                // 展开路径点列表
+                routePointsScrollView.setVisibility(View.VISIBLE);
+                btnToggleRoutePoints.setText("收起路径点");
+            } else {
+                // 收起路径点列表
+                routePointsScrollView.setVisibility(View.GONE);
+                btnToggleRoutePoints.setText("显示路径点");
+            }
+        });
+        
+        // 整个面板折叠/展开按钮
+        btnTogglePanel.setOnClickListener(v -> {
+            if (routePanelContent.getVisibility() == View.VISIBLE) {
+                // 折叠面板
+                routePanelContent.setVisibility(View.GONE);
+                btnTogglePanel.setImageResource(R.drawable.ic_up);
+                
+                // 调整面板高度为只有头部（50dp + 一些边距确保完全可见）
+                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mRoutePanel.getLayoutParams();
+                params.height = (int) (60 * getResources().getDisplayMetrics().density); // 60dp转换为像素
+                mRoutePanel.setLayoutParams(params);
+            } else {
+                // 展开面板
+                routePanelContent.setVisibility(View.VISIBLE);
+                btnTogglePanel.setImageResource(R.drawable.ic_down);
+                
+                // 恢复面板高度
+                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mRoutePanel.getLayoutParams();
+                params.height = FrameLayout.LayoutParams.WRAP_CONTENT;
+                mRoutePanel.setLayoutParams(params);
+            }
+        });
+        mBtnPlanRoute.setOnClickListener(v -> planRoute());
+        btnStartSearch.setOnClickListener(v -> searchLocation(mRouteStartPoint.getText().toString(), true));
+        btnEndSearch.setOnClickListener(v -> searchLocation(mRouteEndPoint.getText().toString(), false));
 
         speedSeekBar.setProgress(12);
         speedSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -1684,16 +1789,426 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {}
         });
+
+        // 速度浮动范围SeekBar
+        speedVariationSeekBar.setProgress(0);
+        speedVariationSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                mRouteSpeedVariation = progress;
+                speedVariationValue.setText(String.format("±%d%%", mRouteSpeedVariation));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        // 默认起点为当前位置
+        mRouteStartPoint.setText("我的位置");
+    }
+
+    private void addInputSuggestion(final EditText editText, final ListView suggestionList, final boolean isStartPoint) {
+        editText.addTextChangedListener(new TextWatcher() {
+            private Timer timer;
+            
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                // 如果是通过点击建议项更新的输入框，不触发新的建议
+                if (mIsUpdatingFromSuggestion) {
+                    mIsUpdatingFromSuggestion = false;
+                    return;
+                }
+                
+                if (timer != null) {
+                    timer.cancel();
+                }
+                
+                final String keyword = s.toString().trim();
+                if (TextUtils.isEmpty(keyword)) {
+                    runOnUiThread(() -> suggestionList.setVisibility(View.GONE));
+                    return;
+                }
+                
+                timer = new Timer();
+                timer.schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        getInputSuggestions(keyword, suggestionList, isStartPoint);
+                    }
+                }, 300);
+            }
+            
+            @Override
+            public void afterTextChanged(Editable s) {}
+        });
+        
+        // 点击其他地方隐藏建议列表
+        editText.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) {
+                // 延迟隐藏，以便能够点击建议项
+                new Handler(Looper.getMainLooper()).postDelayed(() -> suggestionList.setVisibility(View.GONE), 200);
+            }
+        });
+    }
+    
+    private void getInputSuggestions(String keyword, final ListView suggestionList, final boolean isStartPoint) {
+        if (mCurrentLat == 0.0 || mCurrentLon == 0.0) {
+            runOnUiThread(() -> suggestionList.setVisibility(View.GONE));
+            return;
+        }
+        
+        final String ak = BuildConfig.MAPS_API_KEY;
+        if (TextUtils.isEmpty(ak)) {
+            runOnUiThread(() -> suggestionList.setVisibility(View.GONE));
+            return;
+        }
+        
+        try {
+            String encodedKeyword = URLEncoder.encode(keyword, "UTF-8");
+            String url = "https://api.map.baidu.com/place/v2/suggestion?query=" + encodedKeyword + "&location=" + mCurrentLat + "," + mCurrentLon + "&radius=2000&output=json&ak=" + ak;
+            
+            XLog.d("SUGGESTION: url=" + url);
+            
+            okhttp3.Request request = new okhttp3.Request.Builder().url(url).get().build();
+            final Call call = mOkHttpClient.newCall(request);
+            call.enqueue(new Callback() {
+                @Override
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    XLog.e("SUGGESTION: failed, " + e.getMessage());
+                    runOnUiThread(() -> suggestionList.setVisibility(View.GONE));
+                }
+                
+                @Override
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    ResponseBody responseBody = response.body();
+                    if (responseBody == null) {
+                        runOnUiThread(() -> suggestionList.setVisibility(View.GONE));
+                        return;
+                    }
+                    
+                    String resp = responseBody.string();
+                    try {
+                        JSONObject obj = new JSONObject(resp);
+                        if (obj.getInt("status") == 0) {
+                            JSONArray results = obj.getJSONArray("result");
+                            final List<String> suggestions = new ArrayList<>();
+                            final Map<String, LatLng> locationMap = new HashMap<>();
+                            
+                            for (int i = 0; i < results.length(); i++) {
+                                JSONObject item = results.getJSONObject(i);
+                                String name = item.getString("name");
+                                String address = item.optString("address", "");
+                                String suggestion = name;
+                                if (!TextUtils.isEmpty(address)) {
+                                    suggestion += " (" + address + ")";
+                                }
+                                suggestions.add(suggestion);
+                                
+                                if (item.has("location")) {
+                                    JSONObject location = item.getJSONObject("location");
+                                    double lat = location.getDouble("lat");
+                                    double lng = location.getDouble("lng");
+                                    locationMap.put(name, new LatLng(lat, lng));
+                                }
+                            }
+                            
+                            runOnUiThread(() -> {
+                                if (suggestions.size() > 0) {
+                                    // 在ListView中显示建议，而不是弹出对话框
+                                    List<Map<String, Object>> suggestionItems = new ArrayList<>();
+                                    for (int i = 0; i < suggestions.size(); i++) {
+                                        String suggestion = suggestions.get(i);
+                                        String[] parts = suggestion.split(" ");
+                                        String name = parts[0];
+                                        String address = parts.length > 1 ? parts[1] : "";
+                                        
+                                        Map<String, Object> map = new HashMap<>();
+                                        map.put("name", name);
+                                        map.put("address", address);
+                                        suggestionItems.add(map);
+                                    }
+                                    
+                                    SimpleAdapter adapter = new SimpleAdapter(
+                                        MainActivity.this,
+                                        suggestionItems,
+                                        android.R.layout.simple_list_item_2,
+                                        new String[]{"name", "address"},
+                                        new int[]{android.R.id.text1, android.R.id.text2}
+                                    );
+                                    suggestionList.setAdapter(adapter);
+                                    suggestionList.setVisibility(View.VISIBLE);
+                                    
+                                    // 设置点击事件
+                                    suggestionList.setOnItemClickListener((parent, view, position, id) -> {
+                                        @SuppressWarnings("unchecked")
+                                        Map<String, Object> item = (Map<String, Object>) parent.getItemAtPosition(position);
+                                        String name = (String) item.get("name");
+                                        
+                                        // 设置标志，避免更新输入框时触发新的建议
+                                        mIsUpdatingFromSuggestion = true;
+                                        
+                                        if (isStartPoint) {
+                                            mRouteStartPoint.setText(name);
+                                        } else {
+                                            mRouteEndPoint.setText(name);
+                                            if (locationMap.containsKey(name)) {
+                                                mMarkLatLngMap = locationMap.get(name);
+                                                markMap();
+                                            }
+                                        }
+                                        suggestionList.setVisibility(View.GONE);
+                                    });
+                                } else {
+                                    suggestionList.setVisibility(View.GONE);
+                                }
+                            });
+                        } else {
+                            runOnUiThread(() -> suggestionList.setVisibility(View.GONE));
+                        }
+                    } catch (JSONException e) {
+                        XLog.e("SUGGESTION: parse json error, " + e.getMessage());
+                        runOnUiThread(() -> suggestionList.setVisibility(View.GONE));
+                    }
+                }
+            });
+        } catch (UnsupportedEncodingException e) {
+            XLog.e("SUGGESTION: encode keyword error, " + e.getMessage());
+            runOnUiThread(() -> suggestionList.setVisibility(View.GONE));
+        }
+    }
+    
+    private void showSuggestionDialog(List<String> suggestions, final Map<String, LatLng> locationMap, final boolean isStartPoint) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("选择位置");
+        
+        final String[] items = suggestions.toArray(new String[0]);
+        builder.setItems(items, (dialog, which) -> {
+            String selectedItem = items[which];
+            String name = selectedItem.split(" ")[0];
+            
+            if (isStartPoint) {
+                mRouteStartPoint.setText(name);
+            } else {
+                mRouteEndPoint.setText(name);
+                if (locationMap.containsKey(name)) {
+                    mMarkLatLngMap = locationMap.get(name);
+                    markMap();
+                }
+            }
+        });
+        
+        builder.setNegativeButton("取消", null);
+        builder.show();
+    }
+
+    private void searchLocation(String keyword, boolean isStartPoint) {
+        if (TextUtils.isEmpty(keyword)) {
+            GoUtils.DisplayToast(this, "请输入搜索关键词");
+            return;
+        }
+
+        if (mCurrentLat == 0.0 || mCurrentLon == 0.0) {
+            GoUtils.DisplayToast(this, "正在获取位置，请稍后重试");
+            return;
+        }
+
+        final String ak = BuildConfig.MAPS_API_KEY;
+        if (TextUtils.isEmpty(ak)) {
+            GoUtils.DisplayToast(this, "API密钥未配置");
+            return;
+        }
+
+        try {
+            String encodedKeyword = URLEncoder.encode(keyword, "UTF-8");
+            String url = "https://api.map.baidu.com/place/v2/search?query=" + encodedKeyword + "&location=" + mCurrentLat + "," + mCurrentLon + "&radius=2000&output=json&ak=" + ak;
+            
+            XLog.d("SEARCH: url=" + url);
+
+            okhttp3.Request request = new okhttp3.Request.Builder().url(url).get().build();
+            final Call call = mOkHttpClient.newCall(request);
+            call.enqueue(new Callback() {
+                @Override
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    XLog.e("SEARCH: search failed, " + e.getMessage());
+                    runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "网络错误，搜索失败"));
+                }
+
+                @Override
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    ResponseBody responseBody = response.body();
+                    if (responseBody == null) {
+                        XLog.e("SEARCH: response body is null");
+                        runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "搜索失败"));
+                        return;
+                    }
+
+                    String resp = responseBody.string();
+                    XLog.d("SEARCH: response=" + resp);
+                    
+                    try {
+                        JSONObject obj = new JSONObject(resp);
+                        int status = obj.getInt("status");
+                        String message = obj.optString("message", "未知错误");
+                        
+                        if (status == 0) {
+                            JSONArray results = obj.getJSONArray("results");
+                            if (results.length() > 0) {
+                                JSONObject firstResult = results.getJSONObject(0);
+                                double lat = firstResult.getJSONObject("location").getDouble("lat");
+                                double lng = firstResult.getJSONObject("location").getDouble("lng");
+                                LatLng point = new LatLng(lat, lng);
+                                String name = firstResult.getString("name");
+
+                                runOnUiThread(() -> {
+                                    if (isStartPoint) {
+                                        mRouteStartPoint.setText(name);
+                                        // 可以在这里保存起点坐标
+                                    } else {
+                                        mRouteEndPoint.setText(name);
+                                        // 保存终点坐标并标记在地图上
+                                        mMarkLatLngMap = point;
+                                        markMap();
+                                    }
+                                    GoUtils.DisplayToast(MainActivity.this, "搜索成功");
+                                });
+                            } else {
+                                runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "未找到相关位置"));
+                            }
+                        } else {
+                            XLog.e("SEARCH: api error, status=" + status + ", message=" + message);
+                            runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "搜索失败：" + message));
+                        }
+                    } catch (JSONException e) {
+                        XLog.e("SEARCH: parse json error, " + e.getMessage());
+                        runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "搜索失败"));
+                    }
+                }
+            });
+        } catch (UnsupportedEncodingException e) {
+            XLog.e("SEARCH: encode keyword error, " + e.getMessage());
+            GoUtils.DisplayToast(this, "搜索失败");
+        }
+    }
+
+    private void planRoute() {
+        String startText = mRouteStartPoint.getText().toString();
+        String endText = mRouteEndPoint.getText().toString();
+
+        if (TextUtils.isEmpty(endText)) {
+            GoUtils.DisplayToast(this, "请输入目的地");
+            return;
+        }
+
+        if (mMarkLatLngMap == null) {
+            GoUtils.DisplayToast(this, "请先选择目的地");
+            return;
+        }
+
+        // 起点使用当前定位点的百度坐标（mCurrentLat/mCurrentLon），终点使用 mMarkLatLngMap
+        try {
+            final String ak = BuildConfig.MAPS_API_KEY;
+            String origin = mCurrentLat + "," + mCurrentLon; // 百度坐标
+            String destination = mMarkLatLngMap.latitude + "," + mMarkLatLngMap.longitude;
+            String url = "https://api.map.baidu.com/direction/v2/walking?origin=" + origin + "&destination=" + destination + "&ak=" + ak + "&coord_type=bd09ll";
+
+            XLog.d("NAV: url=" + url);
+
+            okhttp3.Request request = new okhttp3.Request.Builder().url(url).get().build();
+            final Call call = mOkHttpClient.newCall(request);
+            call.enqueue(new Callback() {
+                @Override
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    XLog.e("NAV: route request failed");
+                    runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "路线规划失败"));
+                }
+
+                @Override
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    ResponseBody responseBody = response.body();
+                    if (responseBody == null) {
+                        runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "路线规划失败"));
+                        return;
+                    }
+
+                    String resp = responseBody.string();
+                    try {
+                        JSONObject obj = new JSONObject(resp);
+                        if (obj.has("status") && obj.getInt("status") == 0) {
+                            // 解析路线点（百度Direction API v2返回 steps -> path 字符串，经度,纬度;经度,纬度...）
+                            List<LatLng> routePoints = new ArrayList<>();
+                            JSONObject result = obj.getJSONObject("result");
+                            if (result.has("routes")) {
+                                JSONArray routes = result.getJSONArray("routes");
+                                if (routes.length() > 0) {
+                                    JSONObject firstRoute = routes.getJSONObject(0);
+                                    if (firstRoute.has("steps")) {
+                                        JSONArray steps = firstRoute.getJSONArray("steps");
+                                        for (int i = 0; i < steps.length(); i++) {
+                                            JSONObject step = steps.getJSONObject(i);
+                                            if (step.has("path")) {
+                                                String path = step.getString("path");
+                                                // path 格式: "lng1,lat1;lng2,lat2;..."
+                                                String[] pairs = path.split(";\\s*");
+                                                for (String pair : pairs) {
+                                                    if (pair.trim().isEmpty()) continue;
+                                                    String[] ll = pair.split(",");
+                                                    double lng = Double.parseDouble(ll[0]);
+                                                    double lat = Double.parseDouble(ll[1]);
+                                                    routePoints.add(new LatLng(lat, lng));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (routePoints.isEmpty()) {
+                                runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "未获取到路线"));
+                                return;
+                            }
+
+                            // 在地图上绘制折线（主线程）
+                            runOnUiThread(() -> {
+                                try {
+                                    clearRoute(); // 清除现有路径
+                                    mRoutePoints.addAll(routePoints);
+                                    updateRoutePolyline();
+                                    updateRoutePointsList();
+                                    GoUtils.DisplayToast(MainActivity.this, "路线规划成功");
+                                } catch (Exception e) {
+                                    XLog.e("NAV: draw polyline error");
+                                }
+                            });
+                        } else {
+                            runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "路线规划失败"));
+                        }
+                    } catch (JSONException e) {
+                        XLog.e("NAV: parse json error");
+                        runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "路线规划失败"));
+                    }
+                }
+            });
+        } catch (Exception ex) {
+            XLog.e("NAV: exception, " + ex.getMessage());
+            GoUtils.DisplayToast(this, "路线规划失败：" + ex.getMessage());
+        }
     }
 
     private void showRoutePanel() {
         if (mRoutePanel.getParent() == null) {
+            FrameLayout container = findViewById(R.id.route_panel_container);
             FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
+                FrameLayout.LayoutParams.WRAP_CONTENT
             );
             params.gravity = Gravity.BOTTOM;
-            addContentView(mRoutePanel, params);
+            container.addView(mRoutePanel, params);
         }
         mRoutePanel.setVisibility(View.VISIBLE);
         updateRoutePointsList();
@@ -1804,6 +2319,14 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
         if (mServiceBinder != null) {
             mServiceBinder.setRouteSpeed(mRouteSpeed);
+            // 设置速度浮动范围
+            try {
+                // 使用反射调用setRouteSpeedVariation方法，确保兼容性
+                java.lang.reflect.Method method = mServiceBinder.getClass().getMethod("setRouteSpeedVariation", int.class);
+                method.invoke(mServiceBinder, mRouteSpeedVariation);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
             mServiceBinder.startFollowRoute(routeWgs);
             GoUtils.DisplayToast(this, getString(R.string.route_navigating));
             mRoutePanel.findViewById(R.id.btn_route_start).setEnabled(false);

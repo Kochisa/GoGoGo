@@ -53,6 +53,7 @@ public class JoyStick extends View {
     private static final int WINDOW_TYPE_JOYSTICK = 0;
     private static final int WINDOW_TYPE_MAP = 1;
     private static final int WINDOW_TYPE_HISTORY = 2;
+    private static final int WINDOW_TYPE_DOT = 3; // 小圆点模式
 
     private final Context mContext;
     private WindowManager.LayoutParams mWindowParamCurrent;
@@ -92,6 +93,8 @@ public class JoyStick extends View {
     private SuggestionSearch mSuggestionSearch;
     private ListView mSearchList;
     private LinearLayout mSearchLayout;
+    /* 小圆点模式相关 */
+    private View mDotLayout;
 
     public JoyStick(Context context) {
         super(context);
@@ -109,6 +112,8 @@ public class JoyStick extends View {
             initJoyStickMapView();
 
             initHistoryView();
+
+            initDotView();
         }
     }
 
@@ -128,6 +133,8 @@ public class JoyStick extends View {
             initJoyStickMapView();
 
             initHistoryView();
+
+            initDotView();
         }
     }
 
@@ -147,6 +154,8 @@ public class JoyStick extends View {
             initJoyStickMapView();
 
             initHistoryView();
+
+            initDotView();
         }
     }
 
@@ -167,6 +176,9 @@ public class JoyStick extends View {
                 if (mHistoryLayout.getParent() != null) {
                     mWindowManager.removeView(mHistoryLayout);
                 }
+                if (mDotLayout.getParent() != null) {
+                    mWindowManager.removeView(mDotLayout);
+                }
                 if (mMapLayout.getParent() == null) {
                     resetBaiduMap();
                     mWindowManager.addView(mMapLayout, mWindowParamCurrent);
@@ -179,6 +191,9 @@ public class JoyStick extends View {
                 if (mJoystickLayout.getParent() != null) {
                     mWindowManager.removeView(mJoystickLayout);
                 }
+                if (mDotLayout.getParent() != null) {
+                    mWindowManager.removeView(mDotLayout);
+                }
                 if (mHistoryLayout.getParent() == null) {
                     mWindowManager.addView(mHistoryLayout, mWindowParamCurrent);
                 }
@@ -190,8 +205,25 @@ public class JoyStick extends View {
                 if (mHistoryLayout.getParent() != null) {
                     mWindowManager.removeView(mHistoryLayout);
                 }
+                if (mDotLayout.getParent() != null) {
+                    mWindowManager.removeView(mDotLayout);
+                }
                 if (mJoystickLayout.getParent() == null) {
                     mWindowManager.addView(mJoystickLayout, mWindowParamCurrent);
+                }
+                break;
+            case WINDOW_TYPE_DOT:
+                if (mMapLayout.getParent() != null) {
+                    mWindowManager.removeView(mMapLayout);
+                }
+                if (mHistoryLayout.getParent() != null) {
+                    mWindowManager.removeView(mHistoryLayout);
+                }
+                if (mJoystickLayout.getParent() != null) {
+                    mWindowManager.removeView(mJoystickLayout);
+                }
+                if (mDotLayout.getParent() == null) {
+                    mWindowManager.addView(mDotLayout, mWindowParamCurrent);
                 }
                 break;
         }
@@ -209,6 +241,10 @@ public class JoyStick extends View {
         if (mHistoryLayout.getParent() != null) {
             mWindowManager.removeViewImmediate(mHistoryLayout);
         }
+
+        if (mDotLayout.getParent() != null) {
+            mWindowManager.removeViewImmediate(mDotLayout);
+        }
     }
 
     public void destroy() {
@@ -222,6 +258,10 @@ public class JoyStick extends View {
 
         if (mHistoryLayout.getParent() != null) {
             mWindowManager.removeViewImmediate(mHistoryLayout);
+        }
+
+        if (mDotLayout.getParent() != null) {
+            mWindowManager.removeViewImmediate(mDotLayout);
         }
 
         mBaiduMap.setMyLocationEnabled(false);
@@ -245,6 +285,57 @@ public class JoyStick extends View {
         mWindowParamCurrent.height = WindowManager.LayoutParams.WRAP_CONTENT;
         mWindowParamCurrent.x = 300;
         mWindowParamCurrent.y = 300;
+    }
+
+    @SuppressLint("InflateParams")
+    private void initDotView() {
+        // 创建小圆点布局
+        mDotLayout = inflater.inflate(R.layout.joystick_dot, null);
+        mDotLayout.setOnTouchListener(new DotOnTouchListener());
+    }
+
+    private class DotOnTouchListener implements OnTouchListener {
+        private int x;
+        private int y;
+        private boolean isDragging = false;
+
+        @Override
+        public boolean onTouch(View view, MotionEvent event) {
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    x = (int) event.getRawX();
+                    y = (int) event.getRawY();
+                    isDragging = false;
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    int nowX = (int) event.getRawX();
+                    int nowY = (int) event.getRawY();
+                    int movedX = nowX - x;
+                    int movedY = nowY - y;
+                    x = nowX;
+                    y = nowY;
+
+                    // 如果移动距离超过一定阈值，认为是拖动
+                    if (Math.abs(movedX) > 10 || Math.abs(movedY) > 10) {
+                        isDragging = true;
+                    }
+
+                    mWindowParamCurrent.x += movedX;
+                    mWindowParamCurrent.y += movedY;
+                    mWindowManager.updateViewLayout(view, mWindowParamCurrent);
+                    break;
+                case MotionEvent.ACTION_UP:
+                    if (!isDragging) {
+                        // 只有在非拖动状态下才执行点击操作
+                        mCurWin = WINDOW_TYPE_JOYSTICK;
+                        show();
+                    }
+                    break;
+                default:
+                    break;
+            }
+            return true; // 返回true，阻止事件传递
+        }
     }
 
     @SuppressLint("InflateParams")
@@ -286,13 +377,10 @@ public class JoyStick extends View {
             }
         });
 
-        /* 历史按钮点击事件处理 */
-        ImageButton btnHistory = mJoystickLayout.findViewById(R.id.joystick_history);
-        btnHistory.setOnClickListener(v -> {
-            if (mHistoryLayout.getParent() == null) {
-                mCurWin = WINDOW_TYPE_HISTORY;
-                show();
-            }
+        /* 收起按钮点击事件处理 */
+        ImageButton btnCollapse = mJoystickLayout.findViewById(R.id.joystick_collapse);
+        btnCollapse.setOnClickListener(v -> {
+            collapseToDot();
         });
 
         /* 步行按键的点击处理 */
@@ -423,6 +511,11 @@ public class JoyStick extends View {
             }
             return false;
         }
+    }
+
+    public void collapseToDot() {
+        mCurWin = WINDOW_TYPE_DOT;
+        show();
     }
 
     public interface JoyStickClickListener {

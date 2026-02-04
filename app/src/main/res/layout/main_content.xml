@@ -20,7 +20,21 @@
                 android:layout_width="match_parent"
                 android:layout_height="?attr/actionBarSize"
                 android:background="@color/colorPrimary"
-                app:popupTheme="@style/AppTheme.PopupOverlay" />
+                app:popupTheme="@style/AppTheme.PopupOverlay">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/faBtnStart"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="end|center_vertical"
+                    android:contentDescription="@null"
+                    app:elevation="0dp"
+                    app:pressedTranslationZ="0dp"
+                    app:srcCompat="@drawable/ic_position"
+                    app:fabSize="mini"
+                    app:borderWidth="0dp" />
+
+            </androidx.appcompat.widget.Toolbar>
 
         </com.google.android.material.appbar.AppBarLayout>
 
@@ -29,18 +43,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="?attr/actionBarSize" />
-
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/faBtnStart"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="bottom|start"
-            android:layout_marginStart="30dp"
-            android:layout_marginBottom="80dp"
-            android:contentDescription="@null"
-            app:elevation="6dp"
-            app:pressedTranslationZ="12dp"
-            app:srcCompat="@drawable/ic_position" />
 
         <LinearLayout
             android:id="@+id/search_linear"
@@ -71,6 +73,13 @@
                 android:layout_height="wrap_content">
             </ListView>
         </LinearLayout>
+
+        <!-- 路径面板容器 -->
+        <FrameLayout
+            android:id="@+id/route_panel_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+        </FrameLayout>
 
     </FrameLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

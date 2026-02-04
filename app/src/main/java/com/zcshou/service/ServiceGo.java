@@ -49,7 +49,10 @@ public class ServiceGo extends Service {
     private ArrayList<double[]> mRoutePoints = new ArrayList<>(); // 每项为 {lng_wgs, lat_wgs}
     private int mRouteIndex = 0;
     private double mRouteSpeed = 1.2; // 路径移动速度 m/s
+    private int mRouteSpeedVariation = 0; // 速度浮动范围，0-20%
     private double mRouteProgress = 0.0; // 当前点到下一点的进度 (0-1)
+    private double mCurrentRouteSpeed = 1.2; // 当前实际使用的速度
+    private long mLastSpeedUpdateTime = 0; // 上次更新速度的时间戳
     private static final int HANDLER_MSG_ID = 0;
     private static final String SERVICE_GO_HANDLER_NAME = "ServiceGoLocation";
     private LocationManager mLocManager;
@@ -223,8 +226,21 @@ public class ServiceGo extends Service {
                                 double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
                                 double distance = 6371000 * c; // 地球半径约6371公里
                                 
+                                // 每隔1秒更新一次速度
+                                long currentTime = System.currentTimeMillis();
+                                if (currentTime - mLastSpeedUpdateTime >= 1000 || mLastSpeedUpdateTime == 0) {
+                                    // 计算带浮动的实际速度
+                                    mCurrentRouteSpeed = mRouteSpeed;
+                                    if (mRouteSpeedVariation > 0) {
+                                        // 生成 -mRouteSpeedVariation 到 +mRouteSpeedVariation 之间的随机百分比
+                                        double variationPercent = (Math.random() * 2 * mRouteSpeedVariation - mRouteSpeedVariation) / 100.0;
+                                        mCurrentRouteSpeed = mRouteSpeed * (1 + variationPercent);
+                                        XLog.i("SERVICEGO: speed updated to " + String.format("%.2f", mCurrentRouteSpeed) + " m/s (variation: " + String.format("%.1f", variationPercent * 100) + "%)");
+                                    }
+                                    mLastSpeedUpdateTime = currentTime;
+                                }
                                 // 计算这一帧应该移动的距离
-                                double moveDistance = mRouteSpeed * 0.1; // 0.1秒 = 100ms
+                                double moveDistance = mCurrentRouteSpeed * 0.1; // 0.1秒 = 100ms
                                 
                                 // 更新进度
                                 mRouteProgress += moveDistance / distance;
@@ -437,6 +453,12 @@ public class ServiceGo extends Service {
             // 限制速度范围，确保不会过快或过慢
             mRouteSpeed = Math.max(0.1, Math.min(speed, 50.0));
             XLog.i("SERVICEGO: set route speed=" + mRouteSpeed);
+        }
+
+        public void setRouteSpeedVariation(int variation) {
+            // 限制浮动范围在0-20%之间
+            mRouteSpeedVariation = Math.max(0, Math.min(variation, 20));
+            XLog.i("SERVICEGO: set route speed variation=" + mRouteSpeedVariation + "%");
         }
     }
 }

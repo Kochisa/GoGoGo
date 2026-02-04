@@ -30,8 +30,8 @@ android {
         minSdkVersion 27
         //noinspection ExpiredTargetSdkVersion
         targetSdkVersion 32
-        versionCode 1151
-        versionName '1.15.1' // https://semver.org/lang/zh-CN/
+        versionCode 1123
+        versionName '1.12.3' // https://semver.org/lang/zh-CN/
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += ['zh', 'zh-rCN', 'en', 'en-rUS']
         ndk {
@@ -104,9 +104,9 @@ android {
             if (outputFile != null && outputFile.name.endsWith('.apk')) {
                 def fileName
                 if (variant.buildType.name == 'release') {
-                    fileName = "gotest_${defaultConfig.versionName}_arm64-v8a_release.apk"
+                    fileName = "Mundo_${defaultConfig.versionName}_arm64-v8a_release.apk"
                 } else {
-                    fileName = "gotest_${defaultConfig.versionName}_arm64-v8a_debug.apk"
+                    fileName = "Mundo_${defaultConfig.versionName}_arm64-v8a_debug.apk"
                 }
                 outputFileName=fileName
             }
