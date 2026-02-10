@@ -1,13 +1,10 @@
 package com.zcshou.joystick;
-
 import android.content.Context;
 import android.util.AttributeSet;
 import android.view.LayoutInflater;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
-
 import com.zcshou.gogogo.R;
-
 public class ButtonView extends LinearLayout {
     private ButtonViewClickListener mListener;
     private boolean isCenter = true;
@@ -29,32 +26,24 @@ public class ButtonView extends LinearLayout {
     private boolean isWestSouth;
     private ImageButton btnWestSouth;
     private final Context mContext;
-
     public ButtonView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
         mContext = context;
         LayoutInflater.from(context).inflate(R.layout.joystick_button, this);
-
         initButtonView();
     }
-
     public ButtonView(Context context, AttributeSet attrs) {
         super(context, attrs);
         mContext = context;
-
         LayoutInflater.from(context).inflate(R.layout.joystick_button, this);
         initButtonView();
     }
-
     public ButtonView(Context context) {
         super(context);
         mContext = context;
-
         LayoutInflater.from(context).inflate(R.layout.joystick_button, this);
-
         initButtonView();
     }
-
     private void initButtonView() {
         btnCenter = findViewById(R.id.btn_center);
         btnCenter.setOnClickListener(view -> {
@@ -66,7 +55,6 @@ public class ButtonView extends LinearLayout {
                 isCenter = false;
                 btnCenter.setImageResource(R.drawable.ic_lock_open);
                 btnCenter.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
-
                 if (isNorth) {
                     isNorth = false;
                     btnNorth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
@@ -104,10 +92,8 @@ public class ButtonView extends LinearLayout {
                 }
             }
         });
-        /* 默认 */
         isCenter = true;
         btnCenter.setColorFilter(getResources().getColor(R.color.colorAccent, mContext.getTheme()));
-
         isNorth = false;
         btnNorth = findViewById(R.id.btn_north);
         btnNorth.setOnClickListener(view -> {
@@ -115,7 +101,6 @@ public class ButtonView extends LinearLayout {
                 if (!isNorth) {
                     isNorth = true;
                     btnNorth.setColorFilter(getResources().getColor(R.color.colorAccent, mContext.getTheme()));
-
                     isSouth = false;
                     btnSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isWest = false;
@@ -146,7 +131,6 @@ public class ButtonView extends LinearLayout {
                 }
             }
         });
-
         isSouth = false;
         btnSouth = findViewById(R.id.btn_south);
         btnSouth.setOnClickListener(view -> {
@@ -154,7 +138,6 @@ public class ButtonView extends LinearLayout {
                 if (!isSouth) {
                     isSouth = true;
                     btnSouth.setColorFilter(getResources().getColor(R.color.colorAccent, mContext.getTheme()));
-
                     isNorth = false;
                     btnNorth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isWest = false;
@@ -169,7 +152,6 @@ public class ButtonView extends LinearLayout {
                     btnWestNorth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isWestSouth = false;
                     btnWestSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
-
                     if (mListener != null) {
                         mListener.clickAngleInfo(true,270, 1);
                     }
@@ -186,7 +168,6 @@ public class ButtonView extends LinearLayout {
                 }
             }
         });
-
         isWest = false;
         btnWest = findViewById(R.id.btn_west);
         btnWest.setOnClickListener(view -> {
@@ -194,7 +175,6 @@ public class ButtonView extends LinearLayout {
                 if (!isWest) {
                     isWest = true;
                     btnWest.setColorFilter(getResources().getColor(R.color.colorAccent, mContext.getTheme()));
-
                     isSouth = false;
                     btnSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isNorth = false;
@@ -209,7 +189,6 @@ public class ButtonView extends LinearLayout {
                     btnWestNorth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isWestSouth = false;
                     btnWestSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
-
                     if (mListener != null) {
                         mListener.clickAngleInfo(true,180, 1);
                     }
@@ -226,7 +205,6 @@ public class ButtonView extends LinearLayout {
                 }
             }
         });
-
         isEast = false;
         btnEast = findViewById(R.id.btn_east);
         btnEast.setOnClickListener(view -> {
@@ -234,7 +212,6 @@ public class ButtonView extends LinearLayout {
                 if (!isEast) {
                     isEast = true;
                     btnEast.setColorFilter(getResources().getColor(R.color.colorAccent, mContext.getTheme()));
-
                     isSouth = false;
                     btnSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isNorth = false;
@@ -249,7 +226,6 @@ public class ButtonView extends LinearLayout {
                     btnWestNorth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isWestSouth = false;
                     btnWestSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
-
                     if (mListener != null) {
                         mListener.clickAngleInfo(true,0, 1);
                     }
@@ -266,7 +242,6 @@ public class ButtonView extends LinearLayout {
                 }
             }
         });
-
         isEastNorth = false;
         btnEastNorth = findViewById(R.id.btn_north_east);
         btnEastNorth.setOnClickListener(view -> {
@@ -274,7 +249,6 @@ public class ButtonView extends LinearLayout {
                 if (!isEastNorth) {
                     isEastNorth = true;
                     btnEastNorth.setColorFilter(getResources().getColor(R.color.colorAccent, mContext.getTheme()));
-
                     isSouth = false;
                     btnSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isNorth = false;
@@ -289,7 +263,6 @@ public class ButtonView extends LinearLayout {
                     btnWestNorth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isWestSouth = false;
                     btnWestSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
-
                     if (mListener != null) {
                         mListener.clickAngleInfo(true,45, 1);
                     }
@@ -306,7 +279,6 @@ public class ButtonView extends LinearLayout {
                 }
             }
         });
-
         isEastSouth = false;
         btnEastSouth = findViewById(R.id.btn_south_east);
         btnEastSouth.setOnClickListener(view -> {
@@ -314,7 +286,6 @@ public class ButtonView extends LinearLayout {
                 if (!isEastSouth) {
                     isEastSouth = true;
                     btnEastSouth.setColorFilter(getResources().getColor(R.color.colorAccent, mContext.getTheme()));
-
                     isSouth = false;
                     btnSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isNorth = false;
@@ -329,7 +300,6 @@ public class ButtonView extends LinearLayout {
                     btnWestNorth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isWestSouth = false;
                     btnWestSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
-
                     if (mListener != null) {
                         mListener.clickAngleInfo(true,315, 1);
                     }
@@ -346,7 +316,6 @@ public class ButtonView extends LinearLayout {
                 }
             }
         });
-
         isWestNorth = false;
         btnWestNorth = findViewById(R.id.btn_north_west);
         btnWestNorth.setOnClickListener(view -> {
@@ -354,7 +323,6 @@ public class ButtonView extends LinearLayout {
                 if (!isWestNorth) {
                     isWestNorth = true;
                     btnWestNorth.setColorFilter(getResources().getColor(R.color.colorAccent, mContext.getTheme()));
-
                     isSouth = false;
                     btnSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isNorth = false;
@@ -369,7 +337,6 @@ public class ButtonView extends LinearLayout {
                     btnEastSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isWestSouth = false;
                     btnWestSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
-
                     if (mListener != null) {
                         mListener.clickAngleInfo(true,135, 1);
                     }
@@ -386,7 +353,6 @@ public class ButtonView extends LinearLayout {
                 }
             }
         });
-
         isWestSouth = false;
         btnWestSouth = findViewById(R.id.btn_south_west);
         btnWestSouth.setOnClickListener(view -> {
@@ -394,7 +360,6 @@ public class ButtonView extends LinearLayout {
                 if (!isWestSouth) {
                     isWestSouth = true;
                     btnWestSouth.setColorFilter(getResources().getColor(R.color.colorAccent, mContext.getTheme()));
-
                     isSouth = false;
                     btnSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isNorth = false;
@@ -409,7 +374,6 @@ public class ButtonView extends LinearLayout {
                     btnEastSouth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
                     isWestNorth = false;
                     btnWestNorth.setColorFilter(getResources().getColor(R.color.black, mContext.getTheme()));
-
                     if (mListener != null) {
                         mListener.clickAngleInfo(true,225, 1);
                     }
@@ -427,15 +391,10 @@ public class ButtonView extends LinearLayout {
             }
         });
     }
-
     public void setListener(ButtonViewClickListener mListener) {
         this.mListener = mListener;
     }
-
     public interface ButtonViewClickListener {
-        /**
-         * 点击的角度信息
-         */
         void clickAngleInfo(boolean auto, double angle, double r);
     }
 }

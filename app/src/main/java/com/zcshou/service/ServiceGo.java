@@ -1,5 +1,4 @@
 package com.zcshou.service;
-
 import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -23,18 +22,14 @@ import android.os.IBinder;
 import android.os.Message;
 import android.os.Process;
 import android.os.SystemClock;
-
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
-
 import com.elvishew.xlog.XLog;
 import com.zcshou.gogogo.MainActivity;
 import com.zcshou.gogogo.R;
 import com.zcshou.joystick.JoyStick;
 import java.util.ArrayList;
-
 public class ServiceGo extends Service {
-    // 定位相关变量
     public static final double DEFAULT_LAT = 36.667662;
     public static final double DEFAULT_LNG = 117.027707;
     public static final double DEFAULT_ALT = 55.0D;
@@ -43,108 +38,82 @@ public class ServiceGo extends Service {
     private double mCurLng = DEFAULT_LNG;
     private double mCurAlt = DEFAULT_ALT;
     private float mCurBea = DEFAULT_BEA;
-    private double mSpeed = 1.2;        /* 默认的速度，单位 m/s */
-    // 导航相关
+    private double mSpeed = 4.3;        
     private volatile boolean isFollowingRoute = false;
-    private ArrayList<double[]> mRoutePoints = new ArrayList<>(); // 每项为 {lng_wgs, lat_wgs}
+    private ArrayList<double[]> mRoutePoints = new ArrayList<>(); 
     private int mRouteIndex = 0;
-    private double mRouteSpeed = 1.2; // 路径移动速度 m/s
-    private int mRouteSpeedVariation = 0; // 速度浮动范围，0-20%
-    private double mRouteProgress = 0.0; // 当前点到下一点的进度 (0-1)
-    private double mCurrentRouteSpeed = 1.2; // 当前实际使用的速度
-    private long mLastSpeedUpdateTime = 0; // 上次更新速度的时间戳
+    private double mRouteSpeed = 4.3; 
+    private int mRouteSpeedVariation = 0; 
+    private double mRouteProgress = 0.0; 
+    private double mCurrentRouteSpeed = 4.3; 
+    private long mLastSpeedUpdateTime = 0; 
     private static final int HANDLER_MSG_ID = 0;
     private static final String SERVICE_GO_HANDLER_NAME = "ServiceGoLocation";
     private LocationManager mLocManager;
     private HandlerThread mLocHandlerThread;
     private Handler mLocHandler;
     private boolean isStop = false;
-    // 通知栏消息
     private static final int SERVICE_GO_NOTE_ID = 1;
     private static final String SERVICE_GO_NOTE_ACTION_JOYSTICK_SHOW = "ShowJoyStick";
     private static final String SERVICE_GO_NOTE_ACTION_JOYSTICK_HIDE = "HideJoyStick";
     private static final String SERVICE_GO_NOTE_CHANNEL_ID = "SERVICE_GO_NOTE";
     private static final String SERVICE_GO_NOTE_CHANNEL_NAME = "SERVICE_GO_NOTE";
     private NoteActionReceiver mActReceiver;
-    // 摇杆相关
     private JoyStick mJoyStick;
-
     private final ServiceGoBinder mBinder = new ServiceGoBinder();
-
     @Override
     public IBinder onBind(Intent intent) {
         return mBinder;
     }
-
     @Override
     public void onCreate() {
         super.onCreate();
-
         mLocManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
-
         removeTestProviderNetwork();
         addTestProviderNetwork();
-
         removeTestProviderGPS();
         addTestProviderGPS();
-
         initGoLocation();
-
         initNotification();
-
         initJoyStick();
     }
-
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         mCurLng = intent.getDoubleExtra(MainActivity.LNG_MSG_ID, DEFAULT_LNG);
         mCurLat = intent.getDoubleExtra(MainActivity.LAT_MSG_ID, DEFAULT_LAT);
         mCurAlt = intent.getDoubleExtra(MainActivity.ALT_MSG_ID, DEFAULT_ALT);
-
         mJoyStick.setCurrentPosition(mCurLng, mCurLat, mCurAlt);
-
         return super.onStartCommand(intent, flags, startId);
     }
-
     @Override
     public void onDestroy() {
         isStop = true;
         mLocHandler.removeMessages(HANDLER_MSG_ID);
         mLocHandlerThread.quit();
-
         mJoyStick.destroy();
-
         removeTestProviderNetwork();
         removeTestProviderGPS();
-
         unregisterReceiver(mActReceiver);
         stopForeground(STOP_FOREGROUND_REMOVE);
-
         super.onDestroy();
     }
-
     private void initNotification() {
         mActReceiver = new NoteActionReceiver();
         IntentFilter filter = new IntentFilter();
         filter.addAction(SERVICE_GO_NOTE_ACTION_JOYSTICK_SHOW);
         filter.addAction(SERVICE_GO_NOTE_ACTION_JOYSTICK_HIDE);
         registerReceiver(mActReceiver, filter);
-
         NotificationChannel mChannel = new NotificationChannel(SERVICE_GO_NOTE_CHANNEL_ID, SERVICE_GO_NOTE_CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT);
         NotificationManager notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-
         if (notificationManager != null) {
             notificationManager.createNotificationChannel(mChannel);
         }
-
-        //准备intent
         Intent clickIntent = new Intent(this, MainActivity.class);
         PendingIntent clickPI = PendingIntent.getActivity(this, 1, clickIntent, PendingIntent.FLAG_IMMUTABLE);
         Intent showIntent = new Intent(SERVICE_GO_NOTE_ACTION_JOYSTICK_SHOW);
         PendingIntent showPendingPI = PendingIntent.getBroadcast(this, 0, showIntent, PendingIntent.FLAG_IMMUTABLE);
         Intent hideIntent = new Intent(SERVICE_GO_NOTE_ACTION_JOYSTICK_HIDE);
         PendingIntent hidePendingPI = PendingIntent.getBroadcast(this, 0, hideIntent, PendingIntent.FLAG_IMMUTABLE);
-
         Notification notification = new NotificationCompat.Builder(this, SERVICE_GO_NOTE_CHANNEL_ID)
                 .setChannelId(SERVICE_GO_NOTE_CHANNEL_ID)
                 .setContentTitle(getResources().getString(R.string.app_name))
@@ -154,32 +123,22 @@ public class ServiceGo extends Service {
                 .addAction(new NotificationCompat.Action(null, getResources().getString(R.string.note_hide), hidePendingPI))
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .build();
-
         startForeground(SERVICE_GO_NOTE_ID, notification);
     }
-
     private void initJoyStick() {
         mJoyStick = new JoyStick(this);
         mJoyStick.setListener(new JoyStick.JoyStickClickListener() {
             @Override
             public void onMoveInfo(double speed, double disLng, double disLat, double angle) {
-                // 限制速度范围，确保不会过快或过慢
                 mSpeed = Math.max(0.1, Math.min(speed, 50.0));
-                // 根据当前的经纬度和距离，计算下一个经纬度
-                // Latitude: 1 deg = 110.574 km // 纬度的每度的距离大约为 110.574km
-                // Longitude: 1 deg = 111.320*cos(latitude) km  // 经度的每度的距离从0km到111km不等
-                // 具体见：http://wp.mlab.tw/?p=2200
                 mCurLng += disLng / (111.320 * Math.cos(Math.abs(mCurLat) * Math.PI / 180));
                 mCurLat += disLat / 110.574;
-                // 确保经纬度在有效范围内
                 mCurLng = Math.max(-180.0, Math.min(180.0, mCurLng));
                 mCurLat = Math.max(-90.0, Math.min(90.0, mCurLat));
                 mCurBea = (float) angle;
             }
-
             @Override
             public void onPositionInfo(double lng, double lat, double alt) {
-                // 确保经纬度在有效范围内
                 mCurLng = Math.max(-180.0, Math.min(180.0, lng));
                 mCurLat = Math.max(-90.0, Math.min(90.0, lat));
                 mCurAlt = Math.max(0.0, alt);
@@ -187,35 +146,24 @@ public class ServiceGo extends Service {
         });
         mJoyStick.show();
     }
-
     private void initGoLocation() {
-        // 创建 HandlerThread 实例，第一个参数是线程的名字
         mLocHandlerThread = new HandlerThread(SERVICE_GO_HANDLER_NAME, Process.THREAD_PRIORITY_FOREGROUND);
-        // 启动 HandlerThread 线程
         mLocHandlerThread.start();
-        // Handler 对象与 HandlerThread 的 Looper 对象的绑定
         mLocHandler = new Handler(mLocHandlerThread.getLooper()) {
-            // 这里的Handler对象可以看作是绑定在HandlerThread子线程中，所以handlerMessage里的操作是在子线程中运行的
             @Override
             public void handleMessage(@NonNull Message msg) {
                 try {
                     Thread.sleep(100);
-
                     if (!isStop) {
-                        // 如果正在跟随路线，则按序推进到下一个点
                         if (isFollowingRoute && mRouteIndex < mRoutePoints.size()) {
                             double[] current = mRoutePoints.get(mRouteIndex);
                             double[] next = null;
-                            
                             if (mRouteIndex + 1 < mRoutePoints.size()) {
                                 next = mRoutePoints.get(mRouteIndex + 1);
                             }
-                            
                             if (next != null) {
-                                // 计算当前点到下一点的距离（米）- 使用更精确的计算方法
                                 double dx = next[0] - current[0];
                                 double dy = next[1] - current[1];
-                                // 使用 Haversine 公式计算两点之间的距离
                                 double lat1 = Math.toRadians(current[1]);
                                 double lat2 = Math.toRadians(next[1]);
                                 double dLat = Math.toRadians(dy);
@@ -224,48 +172,30 @@ public class ServiceGo extends Service {
                                         Math.cos(lat1) * Math.cos(lat2) *
                                         Math.sin(dLon/2) * Math.sin(dLon/2);
                                 double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                                double distance = 6371000 * c; // 地球半径约6371公里
-                                
-                                // 每隔1秒更新一次速度
-                                long currentTime = System.currentTimeMillis();
-                                if (currentTime - mLastSpeedUpdateTime >= 1000 || mLastSpeedUpdateTime == 0) {
-                                    // 计算带浮动的实际速度
-                                    mCurrentRouteSpeed = mRouteSpeed;
-                                    if (mRouteSpeedVariation > 0) {
-                                        // 生成 -mRouteSpeedVariation 到 +mRouteSpeedVariation 之间的随机百分比
-                                        double variationPercent = (Math.random() * 2 * mRouteSpeedVariation - mRouteSpeedVariation) / 100.0;
-                                        mCurrentRouteSpeed = mRouteSpeed * (1 + variationPercent);
-                                        XLog.i("SERVICEGO: speed updated to " + String.format("%.2f", mCurrentRouteSpeed) + " m/s (variation: " + String.format("%.1f", variationPercent * 100) + "%)");
-                                    }
-                                    mLastSpeedUpdateTime = currentTime;
+                                double distance = 6371000 * c; 
+                                mCurrentRouteSpeed = mRouteSpeed;
+                                if (mRouteSpeedVariation > 0) {
+                                    double variationPercent = (Math.random() * 2 * mRouteSpeedVariation - mRouteSpeedVariation) / 100.0;
+                                    mCurrentRouteSpeed = mRouteSpeed * (1 + variationPercent);
                                 }
-                                // 计算这一帧应该移动的距离
-                                double moveDistance = mCurrentRouteSpeed * 0.1; // 0.1秒 = 100ms
-                                
-                                // 更新进度
+                                double moveDistance = (mCurrentRouteSpeed / 3.6) * 0.1; 
+                                XLog.i("SERVICEGO: speed=" + String.format("%.2f", mCurrentRouteSpeed) + " km/h, moveDistance=" + String.format("%.4f", moveDistance) + " 米");
                                 mRouteProgress += moveDistance / distance;
-                                
                                 if (mRouteProgress >= 1.0) {
-                                    // 到达下一个点
                                     mRouteIndex++;
                                     mRouteProgress = 0.0;
                                     mCurLng = next[0];
                                     mCurLat = next[1];
                                 } else {
-                                    // 在两点之间插值
                                     mCurLng = current[0] + dx * mRouteProgress;
                                     mCurLat = current[1] + dy * mRouteProgress;
                                 }
-                                
-                                // 计算朝向 - 确保方向正确
                                 mCurBea = (float) Math.toDegrees(Math.atan2(dy, dx));
                                 if (mCurBea < 0) {
                                     mCurBea += 360;
                                 }
-                                // 确保朝向在0-360范围内
                                 mCurBea = (mCurBea + 360) % 360;
                             } else {
-                                // 已经是最后一个点，直接定位到该点
                                 mCurLng = current[0];
                                 mCurLat = current[1];
                                 isFollowingRoute = false;
@@ -275,10 +205,8 @@ public class ServiceGo extends Service {
                                 XLog.i("SERVICEGO: finish follow route");
                             }
                         }
-
                         setLocationNetwork();
                         setLocationGPS();
-
                         sendEmptyMessage(HANDLER_MSG_ID);
                     }
                 } catch (InterruptedException e) {
@@ -287,10 +215,8 @@ public class ServiceGo extends Service {
                 }
             }
         };
-
         mLocHandler.sendEmptyMessage(HANDLER_MSG_ID);
     }
-
     private void removeTestProviderGPS() {
         try {
             if (mLocManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
@@ -301,12 +227,9 @@ public class ServiceGo extends Service {
             XLog.e("SERVICEGO: ERROR - removeTestProviderGPS");
         }
     }
-
-    // 注意下面临时添加 @SuppressLint("wrongconstant") 以处理 addTestProvider 参数值的 lint 错误
     @SuppressLint("wrongconstant")
     private void addTestProviderGPS() {
         try {
-            // 注意，由于 android api 问题，下面的参数会提示错误(以下参数是通过相关API获取的真实GPS参数，不是随便写的)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 mLocManager.addTestProvider(LocationManager.GPS_PROVIDER, false, true, false,
                         false, true, true, true, ProviderProperties.POWER_USAGE_HIGH, ProviderProperties.ACCURACY_FINE);
@@ -321,29 +244,29 @@ public class ServiceGo extends Service {
             XLog.e("SERVICEGO: ERROR - addTestProviderGPS");
         }
     }
-
     private void setLocationGPS() {
         try {
-            // 尽可能模拟真实的 GPS 数据
             Location loc = new Location(LocationManager.GPS_PROVIDER);
-            loc.setAccuracy(Criteria.ACCURACY_FINE);    // 设定此位置的估计水平精度，以米为单位。
-            loc.setAltitude(mCurAlt);                     // 设置高度，在 WGS 84 参考坐标系中的米
-            loc.setBearing(mCurBea);                       // 方向（度）
-            loc.setLatitude(mCurLat);                   // 纬度（度）
-            loc.setLongitude(mCurLng);                  // 经度（度）
-            loc.setTime(System.currentTimeMillis());    // 本地时间
-            loc.setSpeed((float) mSpeed);
+            loc.setAccuracy(Criteria.ACCURACY_FINE);    
+            loc.setAltitude(mCurAlt);                     
+            loc.setBearing(mCurBea);                       
+            loc.setLatitude(mCurLat);                   
+            loc.setLongitude(mCurLng);                  
+            loc.setTime(System.currentTimeMillis());    
+            if (isFollowingRoute) {
+                loc.setSpeed((float) (mCurrentRouteSpeed / 3.6));
+            } else {
+                loc.setSpeed((float) (mSpeed / 3.6));
+            }
             loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
             Bundle bundle = new Bundle();
             bundle.putInt("satellites", 7);
             loc.setExtras(bundle);
-
             mLocManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc);
         } catch (Exception e) {
             XLog.e("SERVICEGO: ERROR - setLocationGPS");
         }
     }
-
     private void removeTestProviderNetwork() {
         try {
             if (mLocManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
@@ -354,12 +277,9 @@ public class ServiceGo extends Service {
             XLog.e("SERVICEGO: ERROR - removeTestProviderNetwork");
         }
     }
-
-    // 注意下面临时添加 @SuppressLint("wrongconstant") 以处理 addTestProvider 参数值的 lint 错误
     @SuppressLint("wrongconstant")
     private void addTestProviderNetwork() {
         try {
-            // 注意，由于 android api 问题，下面的参数会提示错误(以下参数是通过相关API获取的真实NETWORK参数，不是随便写的)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 mLocManager.addTestProvider(LocationManager.NETWORK_PROVIDER, true, false,
                         true, true, true, true,
@@ -376,26 +296,26 @@ public class ServiceGo extends Service {
             XLog.e("SERVICEGO: ERROR - addTestProviderNetwork");
         }
     }
-
     private void setLocationNetwork() {
         try {
-            // 尽可能模拟真实的 NETWORK 数据
             Location loc = new Location(LocationManager.NETWORK_PROVIDER);
-            loc.setAccuracy(Criteria.ACCURACY_COARSE);  // 设定此位置的估计水平精度，以米为单位。
-            loc.setAltitude(mCurAlt);                     // 设置高度，在 WGS 84 参考坐标系中的米
-            loc.setBearing(mCurBea);                       // 方向（度）
-            loc.setLatitude(mCurLat);                   // 纬度（度）
-            loc.setLongitude(mCurLng);                  // 经度（度）
-            loc.setTime(System.currentTimeMillis());    // 本地时间
-            loc.setSpeed((float) mSpeed);
+            loc.setAccuracy(Criteria.ACCURACY_COARSE);  
+            loc.setAltitude(mCurAlt);                     
+            loc.setBearing(mCurBea);                       
+            loc.setLatitude(mCurLat);                   
+            loc.setLongitude(mCurLng);                  
+            loc.setTime(System.currentTimeMillis());    
+            if (isFollowingRoute) {
+                loc.setSpeed((float) (mCurrentRouteSpeed / 3.6));
+            } else {
+                loc.setSpeed((float) (mSpeed / 3.6));
+            }
             loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
-
             mLocManager.setTestProviderLocation(LocationManager.NETWORK_PROVIDER, loc);
         } catch (Exception e) {
             XLog.e("SERVICEGO: ERROR - setLocationNetwork");
         }
     }
-
     public class NoteActionReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -404,33 +324,26 @@ public class ServiceGo extends Service {
                 if (action.equals(SERVICE_GO_NOTE_ACTION_JOYSTICK_SHOW)) {
                     mJoyStick.show();
                 }
-
                 if (action.equals(SERVICE_GO_NOTE_ACTION_JOYSTICK_HIDE)) {
                     mJoyStick.hide();
                 }
             }
         }
     }
-
     public class ServiceGoBinder extends Binder {
         public void setPosition(double lng, double lat, double alt) {
             mLocHandler.removeMessages(HANDLER_MSG_ID);
-            // 确保经纬度在有效范围内
             mCurLng = Math.max(-180.0, Math.min(180.0, lng));
             mCurLat = Math.max(-90.0, Math.min(90.0, lat));
             mCurAlt = Math.max(0.0, alt);
             mLocHandler.sendEmptyMessage(HANDLER_MSG_ID);
             mJoyStick.setCurrentPosition(mCurLng, mCurLat, mCurAlt);
         }
-
-        // 接收路线点并开始沿路线行走（传入 WGS84 坐标数组列表）
         public void startFollowRoute(ArrayList<double[]> routeWgs) {
             if (routeWgs == null || routeWgs.isEmpty()) return;
-            // 清理并验证路线点
             mRoutePoints.clear();
             for (double[] point : routeWgs) {
                 if (point.length >= 2) {
-                    // 确保经纬度在有效范围内
                     double lng = Math.max(-180.0, Math.min(180.0, point[0]));
                     double lat = Math.max(-90.0, Math.min(90.0, point[1]));
                     mRoutePoints.add(new double[]{lng, lat});
@@ -441,22 +354,17 @@ public class ServiceGo extends Service {
             isFollowingRoute = true;
             XLog.i("SERVICEGO: start follow route, points=" + mRoutePoints.size());
         }
-
         public void stopFollowRoute() {
             isFollowingRoute = false;
             mRoutePoints.clear();
             mRouteIndex = 0;
             mRouteProgress = 0.0;
         }
-
         public void setRouteSpeed(double speed) {
-            // 限制速度范围，确保不会过快或过慢
-            mRouteSpeed = Math.max(0.1, Math.min(speed, 50.0));
-            XLog.i("SERVICEGO: set route speed=" + mRouteSpeed);
+            mRouteSpeed = Math.max(0.1, Math.min(speed, 400.0)); 
+            XLog.i("SERVICEGO: set route speed=" + String.format("%.2f", mRouteSpeed) + " km/h");
         }
-
         public void setRouteSpeedVariation(int variation) {
-            // 限制浮动范围在0-20%之间
             mRouteSpeedVariation = Math.max(0, Math.min(variation, 20));
             XLog.i("SERVICEGO: set route speed variation=" + mRouteSpeedVariation + "%");
         }
