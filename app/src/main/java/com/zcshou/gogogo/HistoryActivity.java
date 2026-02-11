@@ -1,4 +1,5 @@
 package com.zcshou.gogogo;
+
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
@@ -30,18 +31,31 @@ import java.util.List;
 import java.util.Map;
 import com.zcshou.database.DataBaseHistoryLocation;
 import com.zcshou.utils.GoUtils;
+
+/**
+ * 历史记录活动类
+ * 用于显示和管理位置历史记录
+ */
 public class HistoryActivity extends BaseActivity {
-    public static final String KEY_ID = "KEY_ID";
-    public static final String KEY_LOCATION = "KEY_LOCATION";
-    public static final String KEY_TIME = "KEY_TIME";
-    public static final String KEY_LNG_LAT_WGS = "KEY_LNG_LAT_WGS";
-    public static final String KEY_LNG_LAT_CUSTOM = "KEY_LNG_LAT_CUSTOM";
-    private ListView mRecordListView;
-    private TextView noRecordText;
-    private LinearLayout mSearchLayout;
-    private SQLiteDatabase mHistoryLocationDB;
-    private List<Map<String, Object>> mAllRecord;
-    private SharedPreferences sharedPreferences;
+    // 常量定义
+    public static final String KEY_ID = "KEY_ID"; // 记录ID
+    public static final String KEY_LOCATION = "KEY_LOCATION"; // 位置名称
+    public static final String KEY_TIME = "KEY_TIME"; // 时间
+    public static final String KEY_LNG_LAT_WGS = "KEY_LNG_LAT_WGS"; // WGS84经纬度
+    public static final String KEY_LNG_LAT_CUSTOM = "KEY_LNG_LAT_CUSTOM"; // 自定义经纬度
+    
+    // 变量定义
+    private ListView mRecordListView; // 记录列表视图
+    private TextView noRecordText; // 无记录文本
+    private LinearLayout mSearchLayout; // 搜索布局
+    private SQLiteDatabase mHistoryLocationDB; // 历史位置数据库
+    private List<Map<String, Object>> mAllRecord; // 所有记录
+    private SharedPreferences sharedPreferences; // 共享偏好设置
+    /**
+     * 活动创建时调用
+     * 初始化UI和数据
+     * @param savedInstanceState 保存的实例状态
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -56,16 +70,31 @@ public class HistoryActivity extends BaseActivity {
         initSearchView();
         initRecordListView();
     }
+    /**
+     * 活动销毁时调用
+     * 关闭数据库连接
+     */
     @Override
     protected void onDestroy() {
         mHistoryLocationDB.close();
         super.onDestroy();
     }
+    /**
+     * 创建选项菜单
+     * 加载历史记录菜单布局
+     * @param menu 菜单实例
+     * @return 是否创建成功
+     */
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.menu_history, menu);
         return true;
     }
+    /**
+     * 选项菜单项点击事件处理
+     * @param item 点击的菜单项
+     * @return 是否处理了点击事件
+     */
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
@@ -91,6 +120,10 @@ public class HistoryActivity extends BaseActivity {
         }
         return super.onOptionsItemSelected(item);
     }
+    /**
+     * 初始化位置数据库
+     * 创建数据库帮助类并获取可写数据库，然后执行记录归档
+     */
     private void initLocationDataBase() {
         try {
             DataBaseHistoryLocation hisLocDBHelper = new DataBaseHistoryLocation(getApplicationContext());

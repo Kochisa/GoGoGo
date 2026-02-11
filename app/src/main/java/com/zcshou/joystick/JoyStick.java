@@ -1,6 +1,8 @@
 package com.zcshou.joystick;
+
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
@@ -43,47 +45,78 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+/**
+ * 摇杆控制类
+ * 提供悬浮窗式的摇杆控制，支持以下功能：
+ * 1. 摇杆控制位置移动
+ * 2. 速度模式切换（步行、跑步、骑行）
+ * 3. 地图显示
+ * 4. 历史记录查看
+ * 5. 位置搜索
+ */
 public class JoyStick extends View {
-    private static final int DivGo = 1000;    
-    private static final int WINDOW_TYPE_JOYSTICK = 0;
-    private static final int WINDOW_TYPE_MAP = 1;
-    private static final int WINDOW_TYPE_HISTORY = 2;
-    private static final int WINDOW_TYPE_DOT = 3; 
-    private final Context mContext;
-    private WindowManager.LayoutParams mWindowParamCurrent;
-    private WindowManager mWindowManager;
-    private int mCurWin = WINDOW_TYPE_JOYSTICK;
-    private final LayoutInflater inflater;
-    private boolean isWalk;
-    private ImageButton btnWalk;
-    private boolean isRun;
-    private ImageButton btnRun;
-    private boolean isBike;
-    private ImageButton btnBike;
-    private JoyStickClickListener mListener;
-    private View mJoystickLayout;
-    private GoUtils.TimeCount mTimer;
-    private boolean isMove;
-    private double mSpeed = 4.3;        
-    private double mAltitude = 55.0;
-    private double mAngle = 0;
-    private double mR = 0;
-    private double disLng = 0;
-    private double disLat = 0;
-    private final SharedPreferences sharedPreferences;
-    private FrameLayout mHistoryLayout;
-    private final List<Map<String, Object>> mAllRecord = new ArrayList<> ();
-    private TextView noRecordText;
-    private ListView mRecordListView;
-    private FrameLayout mMapLayout;
-    private MapView mMapView;
-    private BaiduMap mBaiduMap;
-    private LatLng mCurMapLngLat;
-    private LatLng mMarkMapLngLat;
-    private SuggestionSearch mSuggestionSearch;
-    private ListView mSearchList;
-    private LinearLayout mSearchLayout;
-    private View mDotLayout;
+    // 常量定义
+    private static final int DivGo = 1000;    // 移动距离计算除数
+    private static final int WINDOW_TYPE_JOYSTICK = 0; // 摇杆窗口类型
+    private static final int WINDOW_TYPE_MAP = 1; // 地图窗口类型
+    private static final int WINDOW_TYPE_HISTORY = 2; // 历史记录窗口类型
+    private static final int WINDOW_TYPE_DOT = 3; // 点窗口类型
+    
+    // 上下文和窗口管理
+    private final Context mContext; // 上下文
+    private WindowManager.LayoutParams mWindowParamCurrent; // 当前窗口参数
+    private WindowManager mWindowManager; // 窗口管理器
+    private int mCurWin = WINDOW_TYPE_JOYSTICK; // 当前窗口类型
+    private final LayoutInflater inflater; // 布局加载器
+    
+    // 速度模式
+    private boolean isWalk; // 是否步行模式
+    private ImageButton btnWalk; // 步行按钮
+    private boolean isRun; // 是否跑步模式
+    private ImageButton btnRun; // 跑步按钮
+    private boolean isBike; // 是否骑行模式
+    private ImageButton btnBike; // 骑行按钮
+    
+    // 回调和布局
+    private JoyStickClickListener mListener; // 摇杆点击监听器
+    private View mJoystickLayout; // 摇杆布局
+    private GoUtils.TimeCount mTimer; // 计时器
+    private boolean isMove; // 是否正在移动
+    
+    // 位置和速度参数
+    private double mSpeed = 4.3;        // 移动速度 (m/s)
+    private double mAltitude = 55.0; // 海拔高度
+    private double mAngle = 0; // 移动角度
+    private double mR = 0; // 摇杆半径
+    private double disLng = 0; // 经度偏移
+    private double disLat = 0; // 纬度偏移
+    
+    // 偏好设置
+    private final SharedPreferences sharedPreferences; // 共享偏好设置
+    
+    // 历史记录相关
+    private FrameLayout mHistoryLayout; // 历史记录布局
+    private final List<Map<String, Object>> mAllRecord = new ArrayList<> (); // 所有历史记录
+    private TextView noRecordText; // 无记录文本
+    private ListView mRecordListView; // 记录列表视图
+    
+    // 地图相关
+    private FrameLayout mMapLayout; // 地图布局
+    private MapView mMapView; // 地图视图
+    private BaiduMap mBaiduMap; // 百度地图实例
+    private LatLng mCurMapLngLat; // 当前地图坐标
+    private LatLng mMarkMapLngLat; // 标记地图坐标
+    private SuggestionSearch mSuggestionSearch; // 建议搜索
+    private ListView mSearchList; // 搜索结果列表
+    private LinearLayout mSearchLayout; // 搜索布局
+    
+    // 点视图
+    private View mDotLayout; // 点布局
+    /**
+     * 构造方法
+     * @param context 上下文
+     */
     public JoyStick(Context context) {
         super(context);
         this.mContext = context;
@@ -97,6 +130,13 @@ public class JoyStick extends View {
             initDotView();
         }
     }
+
+    /**
+     * 构造方法
+     * @param context 上下文
+     * @param attrs 属性集
+     * @param defStyleAttr 默认样式属性
+     */
     public JoyStick(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
         this.mContext = context;
@@ -110,6 +150,11 @@ public class JoyStick extends View {
             initDotView();
         }
     }
+    /**
+     * 构造方法
+     * @param context 上下文
+     * @param attrs 属性集
+     */
     public JoyStick(Context context, AttributeSet attrs) {
         super(context, attrs);
         this.mContext = context;
@@ -123,15 +168,26 @@ public class JoyStick extends View {
             initDotView();
         }
     }
+    /**
+     * 设置当前位置
+     * @param lng 经度
+     * @param lat 纬度
+     * @param alt 海拔高度
+     */
     public void setCurrentPosition(double lng, double lat, double alt) {
         double[] lngLat = MapUtils.wgs2bd09(lng, lat);
         mCurMapLngLat = new LatLng(lngLat[1], lngLat[0]);
         mAltitude = alt;
         resetBaiduMap();
     }
+    /**
+     * 显示指定类型的窗口
+     * 根据当前窗口类型显示对应的布局
+     */
     public void show() {
         switch (mCurWin) {
             case WINDOW_TYPE_MAP:
+                // 移除其他窗口，显示地图窗口
                 if (mJoystickLayout.getParent() != null) {
                     mWindowManager.removeView(mJoystickLayout);
                 }
@@ -147,6 +203,7 @@ public class JoyStick extends View {
                 }
                 break;
             case WINDOW_TYPE_HISTORY:
+                // 移除其他窗口，显示历史记录窗口
                 if (mMapLayout.getParent() != null) {
                     mWindowManager.removeView(mMapLayout);
                 }
@@ -161,6 +218,7 @@ public class JoyStick extends View {
                 }
                 break;
             case WINDOW_TYPE_JOYSTICK:
+                // 移除其他窗口，显示摇杆窗口
                 if (mMapLayout.getParent() != null) {
                     mWindowManager.removeView(mMapLayout);
                 }
@@ -175,6 +233,7 @@ public class JoyStick extends View {
                 }
                 break;
             case WINDOW_TYPE_DOT:
+                // 移除其他窗口，显示点窗口
                 if (mMapLayout.getParent() != null) {
                     mWindowManager.removeView(mMapLayout);
                 }
@@ -190,6 +249,10 @@ public class JoyStick extends View {
                 break;
         }
     }
+    /**
+     * 隐藏所有窗口
+     * 移除所有窗口视图
+     */
     public void hide() {
         if (mMapLayout.getParent() != null) {
             mWindowManager.removeViewImmediate(mMapLayout);
@@ -204,6 +267,10 @@ public class JoyStick extends View {
             mWindowManager.removeViewImmediate(mDotLayout);
         }
     }
+    /**
+     * 销毁所有窗口和资源
+     * 移除所有窗口视图并清理地图资源
+     */
     public void destroy() {
         if (mMapLayout.getParent() != null) {
             mWindowManager.removeViewImmediate(mMapLayout);
@@ -220,9 +287,17 @@ public class JoyStick extends View {
         mBaiduMap.setMyLocationEnabled(false);
         mMapView.onDestroy();
     }
+    /**
+     * 设置摇杆点击监听器
+     * @param mListener 监听器实例
+     */
     public void setListener(JoyStickClickListener mListener) {
         this.mListener = mListener;
     }
+    /**
+     * 初始化窗口管理器
+     * 设置窗口参数和属性
+     */
     private void initWindowManager() {
         mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
         mWindowParamCurrent = new WindowManager.LayoutParams();
@@ -240,6 +315,8 @@ public class JoyStick extends View {
     @SuppressLint("InflateParams")
     private void initDotView() {
         mDotLayout = inflater.inflate(R.layout.joystick_dot, null);
+        // 设置小圆点透明度为30%
+        mDotLayout.setAlpha(0.3f);
         mDotLayout.setOnTouchListener(new DotOnTouchListener());
     }
     private class DotOnTouchListener implements OnTouchListener {
@@ -304,10 +381,10 @@ public class JoyStick extends View {
         mJoystickLayout.setOnTouchListener(new JoyStickOnTouchListener());
         ImageButton btnPosition = mJoystickLayout.findViewById(R.id.joystick_position);
         btnPosition.setOnClickListener(v -> {
-            if (mMapLayout.getParent() == null) {
-                mCurWin = WINDOW_TYPE_MAP;
-                show();
-            }
+            // 回到APP功能
+            Intent intent = new Intent(mContext, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            mContext.startActivity(intent);
         });
         ImageButton btnCollapse = mJoystickLayout.findViewById(R.id.joystick_collapse);
         btnCollapse.setOnClickListener(v -> {

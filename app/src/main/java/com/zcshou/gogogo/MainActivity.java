@@ -46,6 +46,7 @@ import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.SimpleAdapter;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.ScrollView;
 import android.widget.FrameLayout;
@@ -113,6 +114,18 @@ import okhttp3.Callback;
 import okhttp3.OkHttpClient;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+
+/**
+ * 主活动类
+ * 应用的核心界面，包含以下功能：
+ * 1. 地图显示与交互
+ * 2. 定位服务
+ * 3. 路径规划与导航
+ * 4. 位置模拟
+ * 5. 搜索功能
+ * 6. 历史记录管理
+ * 7. 应用更新
+ */
 public class MainActivity extends BaseActivity implements SensorEventListener {
     public static final String LAT_MSG_ID = "LAT_VALUE";
     public static final String LNG_MSG_ID = "LNG_VALUE";
@@ -164,15 +177,24 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private String mUpdateFilename;
     private View mRoutePanel;
     private boolean isRouteMode = false;
+    private boolean isAddRoutePointEnabled = true; // 控制是否允许添加路径节点的开关
     private ArrayList<LatLng> mRoutePoints = new ArrayList<>();
     private ArrayList<MarkerOptions> mRouteMarkers = new ArrayList<>();
     private com.baidu.mapapi.map.Polyline mRoutePolyline;
     private double mRouteSpeed = 60.0; 
     private int mRouteSpeedVariation = 0; 
+    private LatLng mRouteStartPointLatLng = null; // 保存用户搜索的起始位置坐标
+    private Switch mAddRoutePointSwitch; // 路径节点添加开关 
+    /**
+     * 活动创建时调用
+     * 初始化界面组件和各种服务
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        
+        // 初始化工具栏和抽屉布局
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         DrawerLayout drawer = findViewById(R.id.drawer_layout);
@@ -180,14 +202,19 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 this, drawer, toolbar, R.string.nav_drawer_open, R.string.nav_drawer_close);
         drawer.addDrawerListener(toggle);
         toggle.syncState();
+        
         XLog.i("MainActivity: onCreate");
+        
+        // 初始化基础组件
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         mOkHttpClient = new OkHttpClient();
-        initNavigationView();
-        initMap();
-        initMapLocation();
-        initMapButton();
-        initGoBtn();
+        
+        // 初始化各种功能模块
+        initNavigationView();    // 初始化导航视图
+        initMap();              // 初始化地图
+        initMapLocation();      // 初始化定位
+        initMapButton();        // 初始化地图按钮
+        initGoBtn();            // 初始化开始按钮
         mConnection = new ServiceConnection() {
             @Override
             public void onServiceConnected(ComponentName name, IBinder service) {
@@ -293,10 +320,71 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             @Override
             public boolean onQueryTextSubmit(String query) {
                 try {
-                    mSuggestionSearch.requestSuggestion((new SuggestionSearchOption())
-                            .keyword(query)
-                            .city(mCurrentCity)
-                    );
+                    // 使用与路径导航面板相同的搜索逻辑
+                    if (TextUtils.isEmpty(query)) {
+                        GoUtils.DisplayToast(MainActivity.this, "请输入搜索关键词");
+                        return true;
+                    }
+                    final String ak = BuildConfig.MAPS_API_KEY;
+                    if (TextUtils.isEmpty(ak)) {
+                        GoUtils.DisplayToast(MainActivity.this, "API密钥未配置");
+                        return true;
+                    }
+                    String encodedKeyword = URLEncoder.encode(query, "UTF-8");
+                    // 使用城市参数和更大的搜索半径，确保能搜索到全国范围内的地点
+                    String url = "https://api.map.baidu.com/place/v2/search?query=" + encodedKeyword + "&region=全国&radius=50000&output=json&ak=" + ak;
+                    XLog.d("SEARCH: url=" + url);
+                    okhttp3.Request request = new okhttp3.Request.Builder().url(url).get().build();
+                    final Call call = mOkHttpClient.newCall(request);
+                    call.enqueue(new Callback() {
+                        @Override
+                        public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                            XLog.e("SEARCH: search failed, " + e.getMessage());
+                            runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "网络错误，搜索失败"));
+                        }
+                        @Override
+                        public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                            ResponseBody responseBody = response.body();
+                            if (responseBody == null) {
+                                XLog.e("SEARCH: response body is null");
+                                runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "搜索失败"));
+                                return;
+                            }
+                            String resp = responseBody.string();
+                            XLog.d("SEARCH: response=" + resp);
+                            try {
+                                JSONObject obj = new JSONObject(resp);
+                                int status = obj.getInt("status");
+                                String message = obj.optString("message", "未知错误");
+                                if (status == 0) {
+                                    JSONArray results = obj.getJSONArray("results");
+                                    if (results.length() > 0) {
+                                        JSONObject firstResult = results.getJSONObject(0);
+                                        double lat = firstResult.getJSONObject("location").getDouble("lat");
+                                        double lng = firstResult.getJSONObject("location").getDouble("lng");
+                                        LatLng point = new LatLng(lat, lng);
+                                        String name = firstResult.getString("name");
+                                        runOnUiThread(() -> {
+                                            mMarkName = name;
+                                            mMarkLatLngMap = point;
+                                            markMap();
+                                            MapStatusUpdate mapstatusupdate = MapStatusUpdateFactory.newLatLng(mMarkLatLngMap);
+                                            mBaiduMap.setMapStatus(mapstatusupdate);
+                                            GoUtils.DisplayToast(MainActivity.this, "搜索成功");
+                                        });
+                                    } else {
+                                        runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "未找到相关位置"));
+                                    }
+                                } else {
+                                    XLog.e("SEARCH: api error, status=" + status + ", message=" + message);
+                                    runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "搜索失败：" + message));
+                                }
+                            } catch (JSONException e) {
+                                XLog.e("SEARCH: parse json error, " + e.getMessage());
+                                runOnUiThread(() -> GoUtils.DisplayToast(MainActivity.this, "搜索失败"));
+                            }
+                        }
+                    });
                     ContentValues contentValues = new ContentValues();
                     contentValues.put(DataBaseHistorySearch.DB_COLUMN_KEY, query);
                     contentValues.put(DataBaseHistorySearch.DB_COLUMN_DESCRIPTION, "搜索关键字");
@@ -599,11 +687,16 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             }
             try {
                 final String ak = BuildConfig.MAPS_API_KEY;
-            String origin = mCurrentLat + "," + mCurrentLon; 
-            String destination = mMarkLatLngMap.latitude + "," + mMarkLatLngMap.longitude;
-            String url = "https://api.map.baidu.com/direction/v2/driving?origin=" + origin + "&destination=" + destination + "&ak=" + ak + "&coord_type=bd09ll";
-            XLog.d("NAV: url=" + url);
-            okhttp3.Request request = new okhttp3.Request.Builder().url(url).get().build();
+                String origin;
+                if (mRouteStartPointLatLng != null) {
+                    origin = mRouteStartPointLatLng.latitude + "," + mRouteStartPointLatLng.longitude;
+                } else {
+                    origin = mCurrentLat + "," + mCurrentLon;
+                }
+                String destination = mMarkLatLngMap.latitude + "," + mMarkLatLngMap.longitude;
+                String url = "https://api.map.baidu.com/direction/v2/driving?origin=" + origin + "&destination=" + destination + "&ak=" + ak + "&coord_type=bd09ll";
+                XLog.d("NAV: url=" + url);
+                okhttp3.Request request = new okhttp3.Request.Builder().url(url).get().build();
                 final Call call = mOkHttpClient.newCall(request);
                 call.enqueue(new Callback() {
                     @Override
@@ -1208,7 +1301,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         registerReceiver(mDownloadBdRcv, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
     }
     private void checkUpdateVersion(boolean result) {
-        String mapApiUrl = "https://api.github.com/repos/zcshou/gogogo/releases/latest";
+        String mapApiUrl = "https://api.github.com/repos/kochisa/gogogo/releases/latest";
         okhttp3.Request request = new okhttp3.Request.Builder().url(mapApiUrl).get().build();
         final Call call = mOkHttpClient.newCall(request);
         call.enqueue(new Callback() {
@@ -1334,6 +1427,35 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         ImageButton btnTogglePanel = mRoutePanel.findViewById(R.id.btn_toggle_panel);
         LinearLayout routePanelContent = mRoutePanel.findViewById(R.id.route_panel_content);
         LinearLayout routePanelHeader = mRoutePanel.findViewById(R.id.route_panel_header);
+        
+        // 添加路径节点开关到规划路线按钮上方
+        LinearLayout switchLayout = new LinearLayout(this);
+        switchLayout.setOrientation(LinearLayout.HORIZONTAL);
+        switchLayout.setPadding(12, 8, 12, 8);
+        switchLayout.setBackgroundColor(0xFFEEEEEE);
+        
+        TextView switchLabel = new TextView(this);
+        switchLabel.setText("允许添加路径节点");
+        switchLabel.setTextSize(14);
+        switchLabel.setTextColor(0xFF000000);
+        switchLabel.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        
+        mAddRoutePointSwitch = new Switch(this);
+        mAddRoutePointSwitch.setChecked(isAddRoutePointEnabled);
+        mAddRoutePointSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            isAddRoutePointEnabled = isChecked;
+            String status = isChecked ? "已开启" : "已关闭";
+            GoUtils.DisplayToast(MainActivity.this, "路径节点添加" + status);
+        });
+        
+        switchLayout.addView(switchLabel);
+        switchLayout.addView(mAddRoutePointSwitch);
+        
+        // 找到规划路线按钮，将开关添加到其上方
+        Button btnPlanRoute = mRoutePanel.findViewById(R.id.btn_plan_route);
+        LinearLayout parentLayout = (LinearLayout) btnPlanRoute.getParent();
+        int index = parentLayout.indexOfChild(btnPlanRoute);
+        parentLayout.addView(switchLayout, index);
         ListView startSuggestionList = mRoutePanel.findViewById(R.id.start_suggestion_list);
         ListView endSuggestionList = mRoutePanel.findViewById(R.id.end_suggestion_list);
         addInputSuggestion(mRouteStartPoint, startSuggestionList, true);
@@ -1584,7 +1706,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         }
         try {
             String encodedKeyword = URLEncoder.encode(keyword, "UTF-8");
-            String url = "https://api.map.baidu.com/place/v2/search?query=" + encodedKeyword + "&location=" + mCurrentLat + "," + mCurrentLon + "&radius=2000&output=json&ak=" + ak;
+            // 使用城市参数和更大的搜索半径，确保能搜索到全国范围内的地点
+            String url = "https://api.map.baidu.com/place/v2/search?query=" + encodedKeyword + "&region=全国&radius=50000&output=json&ak=" + ak;
             XLog.d("SEARCH: url=" + url);
             okhttp3.Request request = new okhttp3.Request.Builder().url(url).get().build();
             final Call call = mOkHttpClient.newCall(request);
@@ -1619,6 +1742,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                                 runOnUiThread(() -> {
                                     if (isStartPoint) {
                                         mRouteStartPoint.setText(name);
+                                        mRouteStartPointLatLng = point; // 保存起始位置坐标
                                     } else {
                                         mRouteEndPoint.setText(name);
                                         mMarkLatLngMap = point;
@@ -1657,7 +1781,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         }
         try {
             final String ak = BuildConfig.MAPS_API_KEY;
-            String origin = mCurrentLat + "," + mCurrentLon; 
+            // 使用用户指定的起始位置，如果没有则使用当前定位
+            String origin;
+            if (mRouteStartPointLatLng != null) {
+                origin = mRouteStartPointLatLng.latitude + "," + mRouteStartPointLatLng.longitude;
+            } else {
+                origin = mCurrentLat + "," + mCurrentLon;
+            }
             String destination = mMarkLatLngMap.latitude + "," + mMarkLatLngMap.longitude;
             String url = "https://api.map.baidu.com/direction/v2/driving?origin=" + origin + "&destination=" + destination + "&ak=" + ak + "&coord_type=bd09ll";
             XLog.d("NAV: url=" + url);
@@ -1754,6 +1884,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     }
     private void addRoutePoint(LatLng point) {
         if (!isRouteMode) {
+            return;
+        }
+        if (!isAddRoutePointEnabled) {
             return;
         }
         mRoutePoints.add(point);

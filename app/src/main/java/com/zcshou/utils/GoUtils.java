@@ -1,4 +1,5 @@
 package com.zcshou.utils;
+
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
@@ -23,7 +24,24 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+
+/**
+ * 工具类
+ * 提供各种通用功能：
+ * 1. 系统设置检查
+ * 2. 网络状态检查
+ * 3. GPS状态检查
+ * 4. 位置模拟权限检查
+ * 5. 应用信息获取
+ * 6. 时间格式化
+ * 7. UI相关工具方法
+ */
 public class GoUtils {
+    /**
+     * 检查开发者选项是否启用
+     * @param context 上下文
+     * @return 开发者选项是否启用
+     */
     public static boolean isDeveloperOptionsEnabled(Context context) {
         return Settings.Global.getInt(
                 context.getContentResolver(),
@@ -31,6 +49,11 @@ public class GoUtils {
                 0
         ) == 1;
     }
+    /**
+     * 检查WiFi是否连接
+     * @param context 上下文
+     * @return WiFi是否连接
+     */
     public static boolean isWifiConnected(Context context) {
         ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
         Network nw = connectivityManager.getActiveNetwork();
@@ -40,10 +63,20 @@ public class GoUtils {
         NetworkCapabilities actNw = connectivityManager.getNetworkCapabilities(nw);
         return actNw != null && (actNw.hasTransport(NetworkCapabilities.TRANSPORT_WIFI));
     }
+    /**
+     * 检查WiFi是否启用
+     * @param context 上下文
+     * @return WiFi是否启用
+     */
     public static boolean isWifiEnabled(Context context) {
         WifiManager wifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
         return wifiManager.isWifiEnabled();
     }
+    /**
+     * 检查移动网络是否连接
+     * @param context 上下文
+     * @return 移动网络是否连接
+     */
     public static boolean isMobileConnected(Context context) {
         ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
         Network nw = connectivityManager.getActiveNetwork();
@@ -53,6 +86,11 @@ public class GoUtils {
         NetworkCapabilities actNw = connectivityManager.getNetworkCapabilities(nw);
         return actNw != null && (actNw.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR));
     }
+    /**
+     * 检查网络是否连接
+     * @param context 上下文
+     * @return 网络是否连接
+     */
     public static boolean isNetworkConnected(Context context) {
         ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
         Network nw = connectivityManager.getActiveNetwork();
@@ -60,13 +98,28 @@ public class GoUtils {
         NetworkCapabilities actNw = connectivityManager.getNetworkCapabilities(nw);
         return actNw != null && (actNw.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || actNw.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) || actNw.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) || actNw.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH));
     }
+    /**
+     * 检查网络是否可用
+     * @param context 上下文
+     * @return 网络是否可用
+     */
     public static boolean isNetworkAvailable(Context context) {
         return ((isWifiConnected(context) || isMobileConnected(context)) && isNetworkConnected(context));
     }
+    /**
+     * 检查GPS是否开启
+     * @param context 上下文
+     * @return GPS是否开启
+     */
     public static  boolean isGpsOpened(Context context) {
         LocationManager locationManager = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
         return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
     }
+    /**
+     * 检查是否允许位置模拟
+     * @param context 上下文
+     * @return 是否允许位置模拟
+     */
     @SuppressLint("wrongconstant")
     public static boolean isAllowMockLocation(Context context) {
         boolean canMockPosition = false;

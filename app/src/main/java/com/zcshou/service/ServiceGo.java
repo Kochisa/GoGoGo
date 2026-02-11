@@ -1,4 +1,5 @@
 package com.zcshou.service;
+
 import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -29,72 +30,126 @@ import com.zcshou.gogogo.MainActivity;
 import com.zcshou.gogogo.R;
 import com.zcshou.joystick.JoyStick;
 import java.util.ArrayList;
+
+/**
+ * 位置模拟服务类
+ * 主要功能：
+ * 1. 模拟GPS和网络位置
+ * 2. 提供路径导航功能
+ * 3. 支持摇杆控制位置
+ * 4. 在后台持续运行并提供通知
+ */
 public class ServiceGo extends Service {
-    public static final double DEFAULT_LAT = 36.667662;
-    public static final double DEFAULT_LNG = 117.027707;
-    public static final double DEFAULT_ALT = 55.0D;
-    public static final float DEFAULT_BEA = 0.0F;
-    private double mCurLat = DEFAULT_LAT;
-    private double mCurLng = DEFAULT_LNG;
-    private double mCurAlt = DEFAULT_ALT;
-    private float mCurBea = DEFAULT_BEA;
-    private double mSpeed = 4.3;        
-    private volatile boolean isFollowingRoute = false;
-    private ArrayList<double[]> mRoutePoints = new ArrayList<>(); 
-    private int mRouteIndex = 0;
-    private double mRouteSpeed = 4.3; 
-    private int mRouteSpeedVariation = 0; 
-    private double mRouteProgress = 0.0; 
-    private double mCurrentRouteSpeed = 4.3; 
-    private long mLastSpeedUpdateTime = 0; 
-    private static final int HANDLER_MSG_ID = 0;
-    private static final String SERVICE_GO_HANDLER_NAME = "ServiceGoLocation";
-    private LocationManager mLocManager;
-    private HandlerThread mLocHandlerThread;
-    private Handler mLocHandler;
-    private boolean isStop = false;
-    private static final int SERVICE_GO_NOTE_ID = 1;
-    private static final String SERVICE_GO_NOTE_ACTION_JOYSTICK_SHOW = "ShowJoyStick";
-    private static final String SERVICE_GO_NOTE_ACTION_JOYSTICK_HIDE = "HideJoyStick";
-    private static final String SERVICE_GO_NOTE_CHANNEL_ID = "SERVICE_GO_NOTE";
-    private static final String SERVICE_GO_NOTE_CHANNEL_NAME = "SERVICE_GO_NOTE";
-    private NoteActionReceiver mActReceiver;
-    private JoyStick mJoyStick;
-    private final ServiceGoBinder mBinder = new ServiceGoBinder();
+    // 默认位置参数
+    public static final double DEFAULT_LAT = 36.667662; // 默认纬度
+    public static final double DEFAULT_LNG = 117.027707; // 默认经度
+    public static final double DEFAULT_ALT = 55.0D;     // 默认海拔
+    public static final float DEFAULT_BEA = 0.0F;      // 默认方位角
+    
+    // 当前位置参数
+    private double mCurLat = DEFAULT_LAT; // 当前纬度
+    private double mCurLng = DEFAULT_LNG; // 当前经度
+    private double mCurAlt = DEFAULT_ALT; // 当前海拔
+    private float mCurBea = DEFAULT_BEA;  // 当前方位角
+    private double mSpeed = 4.3;           // 当前速度（m/s）
+    
+    // 路径导航相关
+    private volatile boolean isFollowingRoute = false; // 是否正在导航
+    private ArrayList<double[]> mRoutePoints = new ArrayList<>(); // 路径点列表
+    private int mRouteIndex = 0;            // 当前路径点索引
+    private double mRouteSpeed = 4.3;       // 路径速度（m/s）
+    private int mRouteSpeedVariation = 0;   // 速度浮动范围（%）
+    private double mRouteProgress = 0.0;    // 路径进度
+    private double mCurrentRouteSpeed = 4.3; // 当前路径速度（m/s）
+    private long mLastSpeedUpdateTime = 0;  // 上次速度更新时间
+    
+    // 线程和消息处理
+    private static final int HANDLER_MSG_ID = 0; // 消息ID
+    private static final String SERVICE_GO_HANDLER_NAME = "ServiceGoLocation"; // 处理器线程名称
+    private LocationManager mLocManager;  // 位置管理器
+    private HandlerThread mLocHandlerThread; // 位置处理线程
+    private Handler mLocHandler;          // 位置处理器
+    private boolean isStop = false;        // 是否停止服务
+    
+    // 通知相关
+    private static final int SERVICE_GO_NOTE_ID = 1; // 通知ID
+    private static final String SERVICE_GO_NOTE_ACTION_JOYSTICK_SHOW = "ShowJoyStick"; // 显示摇杆动作
+    private static final String SERVICE_GO_NOTE_ACTION_JOYSTICK_HIDE = "HideJoyStick"; // 隐藏摇杆动作
+    private static final String SERVICE_GO_NOTE_CHANNEL_ID = "SERVICE_GO_NOTE"; // 通知渠道ID
+    private static final String SERVICE_GO_NOTE_CHANNEL_NAME = "SERVICE_GO_NOTE"; // 通知渠道名称
+    
+    // 其他
+    private NoteActionReceiver mActReceiver; // 通知动作接收器
+    private JoyStick mJoyStick;              // 摇杆控制器
+    private final ServiceGoBinder mBinder = new ServiceGoBinder(); // 服务绑定器
     @Override
     public IBinder onBind(Intent intent) {
         return mBinder;
     }
+    /**
+     * 服务创建时调用
+     * 初始化各种组件和服务
+     */
     @Override
     public void onCreate() {
         super.onCreate();
+        
+        // 获取位置管理器
         mLocManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
+        
+        // 移除并重新添加测试位置提供者
         removeTestProviderNetwork();
         addTestProviderNetwork();
         removeTestProviderGPS();
         addTestProviderGPS();
-        initGoLocation();
-        initNotification();
-        initJoyStick();
+        
+        // 初始化各种功能
+        initGoLocation();     // 初始化位置更新
+        initNotification();   // 初始化通知
+        initJoyStick();       // 初始化摇杆
     }
+    /**
+     * 服务启动时调用
+     * 从Intent中获取位置参数并更新当前位置
+     */
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // 从Intent中获取位置参数，若没有则使用默认值
         mCurLng = intent.getDoubleExtra(MainActivity.LNG_MSG_ID, DEFAULT_LNG);
         mCurLat = intent.getDoubleExtra(MainActivity.LAT_MSG_ID, DEFAULT_LAT);
         mCurAlt = intent.getDoubleExtra(MainActivity.ALT_MSG_ID, DEFAULT_ALT);
+        
+        // 更新摇杆的当前位置
         mJoyStick.setCurrentPosition(mCurLng, mCurLat, mCurAlt);
+        
         return super.onStartCommand(intent, flags, startId);
     }
+    /**
+     * 服务销毁时调用
+     * 清理各种资源和组件
+     */
     @Override
     public void onDestroy() {
+        // 设置停止标志
         isStop = true;
+        
+        // 清理消息和线程
         mLocHandler.removeMessages(HANDLER_MSG_ID);
         mLocHandlerThread.quit();
+        
+        // 销毁摇杆
         mJoyStick.destroy();
+        
+        // 移除测试位置提供者
         removeTestProviderNetwork();
         removeTestProviderGPS();
+        
+        // 注销广播接收器
         unregisterReceiver(mActReceiver);
+        
+        // 停止前台服务
         stopForeground(STOP_FOREGROUND_REMOVE);
+        
         super.onDestroy();
     }
     private void initNotification() {
